@@ -1,10 +1,9 @@
 import os
 
-from passlib.context import CryptContext
 from sqlalchemy import inspect, text
 from sqlmodel import SQLModel, Session, create_engine, select
 
-from models import Tag, User, UserRole
+from models import Tag
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -14,12 +13,6 @@ DB_PATH = os.path.join(DATA_DIR, "notebook.db")
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-DEFAULT_RECORDER_USERNAME = "andre"
-DEFAULT_RECORDER_PASSWORD = "ChangeMe123!"  # must be changed on first login
-DEFAULT_VIEWER_USERNAME = "devin"
-DEFAULT_VIEWER_PASSWORD = "ChangeMe123!"  # must be changed on first login
 
 # Starter tag suggestions so Andre isn't starting from a completely blank
 # list - free-form after this, he can add/drop tags as he actually uses them.
@@ -79,21 +72,9 @@ def get_session():
 
 
 def seed_defaults() -> None:
+    """Starter tags only. No accounts are created: the app has no sign-in, and
+    reaching it over the tailnet is the whole of its access control."""
     with Session(engine) as session:
-        if not session.exec(select(User)).first():
-            session.add(User(
-                username=DEFAULT_RECORDER_USERNAME,
-                password_hash=pwd_context.hash(DEFAULT_RECORDER_PASSWORD),
-                role=UserRole.recorder,
-                display_name="Andre",
-            ))
-            session.add(User(
-                username=DEFAULT_VIEWER_USERNAME,
-                password_hash=pwd_context.hash(DEFAULT_VIEWER_PASSWORD),
-                role=UserRole.viewer,
-                display_name="Devin",
-            ))
-
         if not session.exec(select(Tag)).first():
             for name in STARTER_TAGS:
                 session.add(Tag(name=name))

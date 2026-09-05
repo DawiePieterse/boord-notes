@@ -204,7 +204,7 @@ echo ==^> Installing any new dependencies...
 :: adds a dependency cannot run without it, so a half-finished install would
 :: take the farm from "an update didn't apply" to "the server no longer
 :: starts", discovered by whoever opens the app next morning.
-"%VENV_PY%" -c "import fastapi, sqlmodel, jose, passlib, multipart" >nul 2>&1
+"%VENV_PY%" -c "import fastapi, uvicorn, sqlmodel, multipart" >nul 2>&1
 if errorlevel 1 (
     echo.
     echo The server's dependencies are not fully installed, so this update

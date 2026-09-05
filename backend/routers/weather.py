@@ -1,14 +1,12 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
-from models import User
-from security import get_current_user
 from weather import fetch_weather_cached
 
 router = APIRouter(prefix="/api/weather", tags=["weather"])
 
 
 @router.get("/current")
-def current_weather(lat: float, lon: float, user: User = Depends(get_current_user)):
+def current_weather(lat: float, lon: float):
     """Conditions at the phone's own coordinates, looked up server-side so the
     phone needs nothing beyond the farm server it is already talking to.
 

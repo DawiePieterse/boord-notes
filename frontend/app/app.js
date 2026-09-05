@@ -11,55 +11,10 @@ let allTagNames = [];
 // into an HTML string below. See NB.escapeHtml in shared/api.js.
 const esc = (v) => NB.escapeHtml(v);
 
-function isRecorder() { return NB.getRole() === "recorder"; }
-
-// ---------------------------------------------------------------------
-// Auth
-// ---------------------------------------------------------------------
-async function login() {
-  const username = document.getElementById("loginUsername").value.trim();
-  const password = document.getElementById("loginPassword").value;
-  const errEl = document.getElementById("loginError");
-  errEl.classList.add("hidden");
-  try {
-    await NB.login(username, password);
-    _sessionExpiredShown = false; // fresh session - allow the notice again later
-    showApp();
-  } catch (e) {
-    errEl.textContent = "Invalid username or password";
-    errEl.classList.remove("hidden");
-  }
-}
-
-function logout() {
-  NB.logout();
-  document.getElementById("app").classList.add("hidden");
-  document.getElementById("loginScreen").classList.remove("hidden");
-}
-
-// The server rejected our token - it expired, or the server was restarted
-// before its signing key was persisted. Say so and send the user back to the
-// login screen. Every screen funnels 401s here rather than swallowing them,
-// because a dead session and a dead network look identical to the caller and
-// only one of them is fixed by waiting.
-let _sessionExpiredShown = false;
-function sessionExpired() {
-  if (_sessionExpiredShown) return; // several screens can 401 in the same tick
-  _sessionExpiredShown = true;
-  NB.logout();
-  document.getElementById("app").classList.add("hidden");
-  const loginScreen = document.getElementById("loginScreen");
-  loginScreen.classList.remove("hidden");
-  const errEl = document.getElementById("loginError");
-  errEl.textContent = "Your session has expired - please sign in again.";
-  errEl.classList.remove("hidden");
-}
-
-// Anything captured on this device is safe in IndexedDB and will sync once
-// the session is valid again, so an expired session must never be reported as
+// Anything captured on this device is safe in IndexedDB and will sync when the
+// server is reachable again, so a failed request must never be reported as
 // data loss.
 function handleApiError(e) {
-  if (NB.isAuthError(e)) { sessionExpired(); return "auth"; }
   if (NB.isNetworkError(e)) { _lastNetFailAt = Date.now(); return "offline"; }
   return "error";
 }
@@ -79,12 +34,7 @@ function serverLikelyReachable() {
 function noteServerReached() { _lastNetFailAt = 0; }
 
 function showApp() {
-  document.getElementById("loginScreen").classList.add("hidden");
-  document.getElementById("app").classList.remove("hidden");
-  document.getElementById("headerUser").textContent =
-    `Signed in as ${NB.getDisplayName() || NB.getRole()} (${NB.getRole()})`;
   document.getElementById("appVersion").textContent = `v${NB.VERSION}`;
-  document.getElementById("tabCapture").classList.toggle("hidden", !isRecorder());
   loadTagSuggestions();
   updateUnsyncedBadge();
   showPage("dashboard");
@@ -400,7 +350,6 @@ async function editEntry(entry) {
 async function syncLoop() {
   if (!navigator.onLine) return;
   let pushedSomething = false;
-  let authFailed = false;
   try {
     const unsyncedEntries = await IDB.getUnsyncedEntries();
     for (const entry of unsyncedEntries) {
@@ -411,34 +360,25 @@ async function syncLoop() {
         pushedSomething = true;
       } catch (e) {
         if (NB.isNetworkError(e)) _lastNetFailAt = Date.now();
-        // A rejected session will reject every retry too - stop the loop and
-        // say so, instead of retrying forever behind a screen that still
-        // claims to be signed in.
-        if (NB.isAuthError(e)) { authFailed = true; break; }
-        /* otherwise leave unsynced, retry next tick */
+        /* leave unsynced, retry next tick */
       }
     }
 
-    if (!authFailed) {
-      const syncedIds = new Set((await IDB.getAllEntries()).filter((e) => e.synced).map((e) => e.id));
-      const unsyncedPhotos = await IDB.getUnsyncedPhotos();
-      for (const photo of unsyncedPhotos) {
-        if (!syncedIds.has(photo.entry_id)) continue; // parent entry not synced yet
-        try {
-          const form = new FormData();
-          form.append("file", photo.blob, photo.filename);
-          await NB.api(`/api/entries/${photo.entry_id}/photos`, { method: "POST", body: form, isForm: true });
-          await IDB.deletePhoto(photo.local_id);
-          pushedSomething = true;
-        } catch (e) {
-          if (NB.isAuthError(e)) { authFailed = true; break; }
-          /* otherwise leave unsynced, retry next tick */
-        }
+    const syncedIds = new Set((await IDB.getAllEntries()).filter((e) => e.synced).map((e) => e.id));
+    const unsyncedPhotos = await IDB.getUnsyncedPhotos();
+    for (const photo of unsyncedPhotos) {
+      if (!syncedIds.has(photo.entry_id)) continue; // parent entry not synced yet
+      try {
+        const form = new FormData();
+        form.append("file", photo.blob, photo.filename);
+        await NB.api(`/api/entries/${photo.entry_id}/photos`, { method: "POST", body: form, isForm: true });
+        await IDB.deletePhoto(photo.local_id);
+        pushedSomething = true;
+      } catch (e) {
+        /* leave unsynced, retry next tick */
       }
     }
   } catch (e) { /* never let a sync failure surface as an error */ }
-
-  if (authFailed) { sessionExpired(); return; }
 
   updateUnsyncedBadge();
   loadTagSuggestions();
@@ -548,7 +488,6 @@ function mergeStatsWithLocal(stats, localEntries) {
 
 async function loadUnusedTags() {
   const card = document.getElementById("unusedTagsCard");
-  if (!isRecorder()) { card.classList.add("hidden"); return; }
   let tags;
   try {
     tags = await NB.api("/api/tags");
@@ -638,8 +577,7 @@ async function loadEntries() {
     entries = await NB.api(`/api/entries?${qs.toString()}`);
     noteServerReached();
   } catch (e) {
-    const kind = handleApiError(e);
-    if (kind === "auth") return; // already bounced to the login screen
+    handleApiError(e);
     offline = true;
   }
 
@@ -710,7 +648,7 @@ async function showEntryDetail(id) {
   document.getElementById("detailPhotos").innerHTML = entry.localPhotoUrls
     ? entry.localPhotoUrls.map((url) => `<img src="${esc(url)}" class="w-full rounded-lg border">`).join("")
     : entry.photos.map((p) => `<img src="/photos/${encodeURIComponent(p.filename)}" class="w-full rounded-lg border">`).join("");
-  document.getElementById("detailActions").classList.toggle("hidden", !isRecorder());
+  document.getElementById("detailActions").classList.remove("hidden");
   document.getElementById("detailModal").classList.remove("hidden");
   document.getElementById("detailModal").classList.add("flex");
 }
@@ -779,50 +717,6 @@ async function archiveCurrentEntry() {
 }
 
 // ---------------------------------------------------------------------
-// Settings
-// ---------------------------------------------------------------------
-async function changePassword() {
-  const currentPassword = document.getElementById("currentPassword").value;
-  const newPassword = document.getElementById("newPassword").value;
-  const confirmPassword = document.getElementById("confirmPassword").value;
-  const errEl = document.getElementById("settingsError");
-  errEl.classList.add("hidden");
-
-  if (!currentPassword || !newPassword) {
-    errEl.textContent = "Fill in both the current and new password.";
-    errEl.classList.remove("hidden");
-    return;
-  }
-  if (newPassword !== confirmPassword) {
-    errEl.textContent = "New password and confirmation don't match.";
-    errEl.classList.remove("hidden");
-    return;
-  }
-  if (newPassword.length < 8) {
-    errEl.textContent = "New password should be at least 8 characters.";
-    errEl.classList.remove("hidden");
-    return;
-  }
-
-  try {
-    await NB.api("/api/auth/change-password", {
-      method: "POST",
-      body: { current_password: currentPassword, new_password: newPassword },
-    });
-    document.getElementById("currentPassword").value = "";
-    document.getElementById("newPassword").value = "";
-    document.getElementById("confirmPassword").value = "";
-    NB.toast("Password changed");
-  } catch (e) {
-    if (handleApiError(e) === "auth") return; // session died, not a bad password
-    errEl.textContent = String(e.message || e).startsWith("400")
-      ? "Current password is incorrect."
-      : "Could not change password - check connection and try again.";
-    errEl.classList.remove("hidden");
-  }
-}
-
-// ---------------------------------------------------------------------
 // Backups
 // ---------------------------------------------------------------------
 function formatBytes(bytes) {
@@ -832,7 +726,6 @@ function formatBytes(bytes) {
 
 async function loadBackups() {
   const card = document.getElementById("backupsCard");
-  if (!isRecorder()) { card.classList.add("hidden"); return; }
   card.classList.remove("hidden");
   let backups;
   try {
@@ -881,9 +774,7 @@ async function triggerBackup() {
 // Init
 // ---------------------------------------------------------------------
 function init() {
-  document.getElementById("loginBtn").addEventListener("click", login);
-  document.getElementById("loginPassword").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
-  document.getElementById("logoutBtn").addEventListener("click", logout);
+  NB.clearLegacyAuthStorage();
   document.querySelectorAll(".tab-btn").forEach((btn) => btn.addEventListener("click", () => showPage(btn.dataset.tab)));
 
   document.getElementById("tagInput").addEventListener("keydown", (e) => {
@@ -911,17 +802,12 @@ function init() {
   document.getElementById("editEntryBtn").addEventListener("click", () => currentDetailEntry && editEntry(currentDetailEntry));
   document.getElementById("archiveEntryBtn").addEventListener("click", archiveCurrentEntry);
 
-  document.getElementById("changePasswordBtn").addEventListener("click", changePassword);
   document.getElementById("backupNowBtn").addEventListener("click", triggerBackup);
 
   setInterval(syncLoop, 10000);
   window.addEventListener("online", syncLoop);
 
-  if (NB.getToken()) {
-    showApp();
-  } else {
-    document.getElementById("loginScreen").classList.remove("hidden");
-  }
+  showApp();
   syncLoop();
 }
 

@@ -2,8 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from db import get_session
-from models import Entry, EntryTagLink, Tag, User
-from security import get_current_user, require_recorder
+from models import Entry, EntryTagLink, Tag
 
 router = APIRouter(prefix="/api/tags", tags=["tags"])
 
@@ -24,7 +23,7 @@ def _live_use_count(session: Session, tag_id: int) -> int:
 
 
 @router.get("")
-def list_tags(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+def list_tags(session: Session = Depends(get_session)):
     """All known tags with how many (non-archived) entries use each - for
     autocomplete while typing and the filter chip list."""
     tags = session.exec(select(Tag)).all()
@@ -34,7 +33,7 @@ def list_tags(session: Session = Depends(get_session), user: User = Depends(get_
 
 
 @router.delete("/{name}")
-def delete_tag(name: str, session: Session = Depends(get_session), user: User = Depends(require_recorder)):
+def delete_tag(name: str, session: Session = Depends(get_session)):
     """Delete a tag outright - only allowed while no live entry uses it, so
     this can never silently detach a tag from something Andre is still using
     it on. Renaming/merging tags is not supported.

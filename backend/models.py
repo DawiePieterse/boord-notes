@@ -1,20 +1,21 @@
 from datetime import datetime
-from enum import Enum
 from typing import Optional
 
 from sqlmodel import Field, SQLModel
 
 
-class UserRole(str, Enum):
-    recorder = "recorder"
-    viewer = "viewer"
-
-
 class User(SQLModel, table=True):
+    """Not an account any more - the app has no sign-in. This survives purely
+    as the author record that entries captured before the sign-in was removed
+    still point at, so their "captured by Andre" line keeps working.
+
+    password_hash and role are deliberately no longer mapped. The columns are
+    still in an existing notebook.db, because the migration in db.py is
+    strictly additive and never drops anything, but nothing reads them and
+    nothing writes a new row here. A fresh install creates the table empty and
+    it stays that way."""
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(unique=True)
-    password_hash: str
-    role: UserRole
     display_name: str = ""
 
 
@@ -38,6 +39,7 @@ class Entry(SQLModel, table=True):
     block: str = ""  # free text, e.g. "Block 4 North" - deliberately not an
     # FK into the harvest app's Block table; the two apps are independent,
     # this is just a naming convention for cross-reference.
+    # Set only on entries captured while the app had accounts; None since.
     created_by_id: Optional[int] = Field(default=None, foreign_key="user.id")
     created_at: datetime
     updated_at: Optional[datetime] = None

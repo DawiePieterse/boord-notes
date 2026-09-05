@@ -9,7 +9,6 @@ from sqlmodel import Session, SQLModel, select
 
 from db import PHOTOS_DIR, get_session
 from models import Entry, EntryTagLink, Photo, Tag, User
-from security import get_current_user, require_recorder
 
 router = APIRouter(prefix="/api/entries", tags=["entries"])
 
@@ -65,6 +64,9 @@ def _entry_out(session: Session, entry: Entry) -> dict:
         .where(EntryTagLink.entry_id == entry.id)
     ).all()
     photos = session.exec(select(Photo).where(Photo.entry_id == entry.id)).all()
+    # Entries captured before the sign-in was removed carry an author; ones
+    # captured since do not, and the UI omits the field rather than inventing
+    # a name for them. See models.User.
     creator = session.get(User, entry.created_by_id) if entry.created_by_id else None
     return {
         "id": entry.id,
@@ -88,7 +90,7 @@ def _entry_out(session: Session, entry: Entry) -> dict:
 
 @router.get("")
 def list_entries(q: str = "", tag: str = "", archived: bool = False,
-                  session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+                  session: Session = Depends(get_session)):
     entries = session.exec(select(Entry).where(Entry.archived == archived)).all()
     results = [_entry_out(session, e) for e in entries]
     # Filtered in Python, not SQL LIKE - SQLite's default LIKE collation is
@@ -105,7 +107,7 @@ def list_entries(q: str = "", tag: str = "", archived: bool = False,
 
 
 @router.get("/stats")
-def entry_stats(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+def entry_stats(session: Session = Depends(get_session)):
     entries = session.exec(select(Entry).where(Entry.archived == False)).all()  # noqa: E712
     week_ago = datetime.utcnow() - timedelta(days=7)
     with_photos_ids = set(session.exec(select(Photo.entry_id)).all())
@@ -128,7 +130,7 @@ def entry_stats(session: Session = Depends(get_session), user: User = Depends(ge
 
 
 @router.get("/{entry_id}")
-def get_entry(entry_id: str, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+def get_entry(entry_id: str, session: Session = Depends(get_session)):
     entry = session.get(Entry, entry_id)
     if not entry:
         raise HTTPException(404, "Entry not found")
@@ -136,7 +138,7 @@ def get_entry(entry_id: str, session: Session = Depends(get_session), user: User
 
 
 @router.post("")
-def upsert_entry(payload: EntryIn, session: Session = Depends(get_session), user: User = Depends(require_recorder)):
+def upsert_entry(payload: EntryIn, session: Session = Depends(get_session)):
     """Create or edit - same endpoint for both (upsert by client-generated
     id), matching the harvest app's upsert_worker/upsert_team/upsert_block
     convention. Idempotent: a retried sync POST for the same id just
@@ -154,11 +156,10 @@ def upsert_entry(payload: EntryIn, session: Session = Depends(get_session), user
         existing.body = payload.body
         existing.block = payload.block
         existing.updated_at = now
-        existing.updated_by_id = user.id
         entry = existing
     else:
         entry = Entry(id=payload.id, title=payload.title, body=payload.body, block=payload.block,
-                       created_at=payload.created_at or now, created_by_id=user.id,
+                       created_at=payload.created_at or now,
                        latitude=payload.latitude, longitude=payload.longitude,
                        location_accuracy_m=payload.location_accuracy_m,
                        weather_temp=payload.weather_temp, weather_humidity=payload.weather_humidity,
@@ -176,7 +177,7 @@ def upsert_entry(payload: EntryIn, session: Session = Depends(get_session), user
 
 
 @router.delete("/{entry_id}")
-def archive_entry(entry_id: str, session: Session = Depends(get_session), user: User = Depends(require_recorder)):
+def archive_entry(entry_id: str, session: Session = Depends(get_session)):
     entry = session.get(Entry, entry_id)
     if entry:
         entry.archived = True
@@ -187,7 +188,7 @@ def archive_entry(entry_id: str, session: Session = Depends(get_session), user: 
 
 @router.post("/{entry_id}/photos")
 async def upload_photo(entry_id: str, file: UploadFile, caption: str = "",
-                        session: Session = Depends(get_session), user: User = Depends(require_recorder)):
+                        session: Session = Depends(get_session)):
     _validate_entry_id(entry_id)
     entry = session.get(Entry, entry_id)
     if not entry:
@@ -206,8 +207,7 @@ async def upload_photo(entry_id: str, file: UploadFile, caption: str = "",
 
 
 @router.delete("/{entry_id}/photos/{photo_id}")
-def delete_photo(entry_id: str, photo_id: int, session: Session = Depends(get_session),
-                  user: User = Depends(require_recorder)):
+def delete_photo(entry_id: str, photo_id: int, session: Session = Depends(get_session)):
     photo = session.get(Photo, photo_id)
     if photo and photo.entry_id == entry_id:
         path = os.path.join(PHOTOS_DIR, photo.filename)

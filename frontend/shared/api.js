@@ -1,7 +1,7 @@
 // Shared helpers used by the Boord Notes app.
-// The NB namespace and the nb_* localStorage keys keep their original names
-// through the rename on purpose: the keys hold the login token, so renaming
-// them would sign every phone out on the update that landed the new name.
+// There is no sign-in: api() sends no credentials and nothing is stored per
+// user. Reaching the server over the tailnet is the whole of the access
+// control - see MANUAL.md chapter 2.
 // Everything is served from the same origin as the backend, so API_BASE is relative.
 const API_BASE = "";
 
@@ -10,37 +10,17 @@ const NB = {
   // it's obvious at a glance whether a device's cached copy is actually up
   // to date - the service worker revalidates in the background, so a device
   // picks up new code on its second load (see frontend/app/service-worker.js).
-  VERSION: "2.0",
+  VERSION: "2.1",
 
-  getToken() { return localStorage.getItem("nb_token"); },
-  setToken(t) { localStorage.setItem("nb_token", t); },
-  clearToken() { localStorage.removeItem("nb_token"); },
-
-  getRole() { return localStorage.getItem("nb_role"); },
-  setRole(r) { localStorage.setItem("nb_role", r); },
-
-  getDisplayName() { return localStorage.getItem("nb_display_name") || ""; },
-  setDisplayName(n) { localStorage.setItem("nb_display_name", n); },
+  // Left behind by the versions that had accounts. Cleared once on load so a
+  // phone that used to sign in is not carrying a stale token and role around
+  // for the life of the install.
+  clearLegacyAuthStorage() {
+    ["nb_token", "nb_role", "nb_display_name"].forEach((k) => localStorage.removeItem(k));
+  },
 
   getGpsEnabled() { return localStorage.getItem("nb_gps_enabled") !== "off"; },
   setGpsEnabled(enabled) { localStorage.setItem("nb_gps_enabled", enabled ? "on" : "off"); },
-
-  async login(username, password) {
-    const body = new URLSearchParams({ username, password });
-    const res = await fetch(`${API_BASE}/api/auth/login`, { method: "POST", body });
-    if (!res.ok) throw new Error("Invalid username or password");
-    const data = await res.json();
-    NB.setToken(data.access_token);
-    NB.setRole(data.role);
-    NB.setDisplayName(data.display_name || "");
-    return data;
-  },
-
-  logout() {
-    NB.clearToken();
-    localStorage.removeItem("nb_role");
-    localStorage.removeItem("nb_display_name");
-  },
 
   // True when the request never reached the server (offline, unreachable).
   // fetch() rejects with a TypeError for those.
@@ -48,20 +28,8 @@ const NB = {
     return e instanceof TypeError || (!!e && (e.name === "AbortError" || e.name === "TimeoutError"));
   },
 
-  // True when the server actively rejected the session - the token is missing,
-  // expired, or was signed with a key the server no longer has. api() puts the
-  // status code at the front of the error message. This has to be told apart
-  // from a network failure: treating a dead session as "offline" leaves the
-  // user looking at empty screens forever with no hint that logging in again
-  // would fix it.
-  isAuthError(e) {
-    return parseInt(String(e && e.message).slice(0, 3), 10) === 401;
-  },
-
   async api(path, { method = "GET", body, isForm = false } = {}) {
     const headers = {};
-    const token = NB.getToken();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
     let payload = body;
     if (body && !isForm) {
       headers["Content-Type"] = "application/json";

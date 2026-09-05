@@ -1,27 +1,26 @@
 import os
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from backup import BACKUPS_DIR, create_backup, list_backups
-from security import require_recorder
 
 router = APIRouter(prefix="/api/backups", tags=["backups"])
 
 
 @router.get("")
-def get_backups(user=Depends(require_recorder)):
+def get_backups():
     return list_backups()
 
 
 @router.post("")
-def trigger_backup(user=Depends(require_recorder)):
+def trigger_backup():
     filename = create_backup()
     return {"filename": filename}
 
 
 @router.get("/{filename}/download")
-def download_backup(filename: str, user=Depends(require_recorder)):
+def download_backup(filename: str):
     safe_name = os.path.basename(filename)
     path = os.path.join(BACKUPS_DIR, safe_name)
     if not os.path.exists(path):

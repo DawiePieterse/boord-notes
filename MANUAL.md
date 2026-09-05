@@ -33,17 +33,23 @@ Annexe A: [Data Field Reference](#annexe-a-data-field-reference)
 
 ## 1. Overview & Concepts
 
-### The two accounts
+### There is no sign-in
 
-- **andre** (role: *recorder*) - can create, edit, and archive entries.
-- **devin** (role: *viewer*) - can browse and search everything Andre has
-  recorded, but can't create, edit, or delete anything. This is enforced by
-  the server itself, not just hidden buttons - even a direct API request
-  from the viewer account gets rejected.
+The app opens straight onto the Dashboard. There are no accounts, no
+passwords, and no roles: **anyone who can reach it can read every note, and
+add, edit or archive notes.** Reaching it is the entire access control, and
+that means Tailscale - see
+[Tailscale HTTPS](#tailscale-https-required-for-the-installable-offline-app).
 
-Both start with the password `ChangeMe123!` - change it under the
-**Settings** tab the first time you log in (see
-[Changing the default passwords](#changing-the-default-passwords) below).
+This matches Boord Owner, which has no sign-in either, but the consequence is
+larger here and is worth being clear about. Owner is read-only by
+construction. This app is not: every device on the farm's tailnet, including
+the field phones the harvest crew carry, can change or archive what Andre has
+recorded. Removing a device in the Tailscale admin console is the only way to
+take that away - there is no account to disable and no password to change.
+
+Notes captured before the sign-in was removed still show who wrote them.
+Notes captured since show no author, because nothing knows who is typing.
 
 ### No audio is ever stored
 
@@ -212,8 +218,8 @@ itself. This is the same arrangement Boord Owner uses.
 HTTPS is not a nicety here. **Installing the app to the Home Screen and
 registering its offline service worker both require a secure context**
 (HTTPS, or `localhost`), and so do the camera and a note's GPS location. A
-plain `http://192.168.x.x:8020/` address would let Andre log in and use the
-app in a browser tab, then silently fail to install, work offline, take a
+plain `http://192.168.x.x:8020/` address would let Andre open the app in a
+browser tab, then silently fail to install, work offline, take a
 photo, or record where a note was made - which is the entire point of the app
 for someone walking the farm without signal.
 
@@ -267,19 +273,6 @@ If Tailscale isn't set up on this server yet, see Boord's `MANUAL.md`
 chapter 2, section "Connecting external users with Tailscale" - the setup
 steps are identical, this app just needs its own `serve` line.
 
-### Changing the default passwords
-
-Log in as each account and go to the **Settings** tab: enter the current
-password (`ChangeMe123!` the first time) and a new password twice, then
-**Save New Password**. Do this once for `andre` and once for `devin` - each
-account only changes its own password while logged in as that account.
-
-Since the app is only reachable by devices on the tailnet, this is a smaller
-risk than an app open to the public internet - but it's still worth doing
-once, soon after setup. Note the difference from Boord Owner, which has no
-sign-in at all: this app keeps its two accounts, so the tailnet and the
-passwords are two locks rather than one.
-
 ---
 
 ## 3. Device Setup (iPhone)
@@ -301,10 +294,8 @@ Screen icon.
 https://<server-name>.<tailnet-name>.ts.net:9443/app/
 ```
 
-**Both accounts use this same address** - Andre and his son open the identical
-link and simply sign in with different usernames. There is no separate address
-for the son: the read-only restriction lives on his account and is enforced by
-the server, so a different URL would neither add nor remove anything.
+**Andre and his son open the identical link** and both land straight on the
+Dashboard. There is no sign-in, and no separate address for either of them.
 
 Three parts of that address matter, and getting any of them wrong fails in a
 way that doesn't look like an address problem:
@@ -328,9 +319,8 @@ it on the server with `tailscale serve status` - the line proxying to
 
 **Steps:**
 1. Open the address above in Safari on the iPhone.
-2. Log in as `andre` (or `devin`).
-3. Tap the **Share** icon (square with an arrow) → **"Add to Home Screen"**.
-4. From now on, always open **Notes** from the Home Screen icon, not from a
+2. Tap the **Share** icon (square with an arrow) → **"Add to Home Screen"**.
+3. From now on, always open **Notes** from the Home Screen icon, not from a
    Safari bookmark or tab. Its icon is the Boord crate with a **sky-blue
    leaf** - the same mark as Boord's other apps, whose leaves are green
    (Field), red (Receiving), yellow (Admin) and white (Owner).
@@ -354,7 +344,7 @@ weak signal.
 
 ## 4. Using the App
 
-### Capture (andre only)
+### Capture
 
 - **Title** - short, e.g. "Irrigation pump quirk".
 - **Block / Location** (optional) - free text, e.g. "Block 4 North" or "near
@@ -382,7 +372,7 @@ Search by title, notes text, or block/location, and/or filter by a single
 tag. Tap any entry to open its full detail - photos, tags, block, and full
 notes text.
 
-### Editing and archiving (andre only)
+### Editing and archiving
 
 From an entry's detail view: **Edit** reopens it in the Capture form with
 everything filled in; **Archive** soft-deletes it (it stops appearing in
@@ -457,7 +447,7 @@ mechanism as Boord. This only runs if the server is actually
 running at 02:00; if the PC is off overnight, that night's backup is simply
 skipped.
 
-Andre (not `devin` - the backup endpoints are recorder-only) can also trigger
+Anyone using the app can also trigger
 one on demand from the **Settings** tab: the **Backups** card has a
 **Backup Now** button, plus a list of existing backups with a **Download**
 link for each - useful for pulling a copy off the server onto a phone or
@@ -543,11 +533,6 @@ nothing. Fixing it on the phone takes both halves:
    remove it. This is what clears the stale offline copy; deleting the icon
    alone does not.
 3. Re-add the icon from the new address, `.../:9443/app/`.
-
-**Son can see the app but has no Save/Edit/Archive buttons.**
-That's expected - his account is *viewer*-only by design (see
-[chapter 1](#the-two-accounts)). If he genuinely needs to record entries
-too, log him in as `andre` instead, or ask about adding a third account.
 
 **An entry looks like it disappeared after installing the Home Screen
 icon.** This is the iOS storage-silo issue described in
