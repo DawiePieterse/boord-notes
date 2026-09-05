@@ -99,7 +99,7 @@ all three can be stopped, started, and updated independently.
 2. Double-click **`install.bat`**.
 3. Approve the Windows "Do you want to allow this app..." prompt (User
    Account Control) - the installer needs administrator rights once to
-   register the Scheduled Task and firewall rule.
+   register the Scheduled Task and to close the old firewall rule.
 4. Wait for it to finish - it installs Python if needed, creates the app's
    virtual environment, installs dependencies, imports the release signing
    key, and registers a Scheduled Task ("Boord Notes Server") so the server
@@ -118,6 +118,43 @@ that has been exposed longest. The installer also removes the old
 "Bekfontein Farm Notebook Server" task, so the PC does not boot two copies.
 
 Safe to re-run any time - each step checks what's already done and skips it.
+
+### Upgrading the server that is already running (one time only)
+
+A farm server installed before the rename cannot reach this release through
+its own `update_server.bat`, because that file is *itself* one of the things
+being replaced - the new one refuses to install anything until a release key
+fingerprint exists, and the old checkout has neither the fingerprint nor
+`release-key.asc`. Do it in this order, once:
+
+1. **Double-click the *existing* `update_server.bat`.** The old one still
+   does a plain `git pull`, which is exactly what is needed here: it brings
+   down the renamed app, the release key, and the new installer and updater.
+   It then restarts the server under the old task, still on port 8001 - the
+   new code runs there perfectly well, so nothing is broken while you finish.
+
+   The GitHub repository has been renamed too, but GitHub redirects the old
+   URL, so the existing `origin` keeps working and needs no attention.
+
+2. **Double-click `install.bat`.** This is the step that actually moves the
+   app: new port, loopback bind, old firewall rule closed, old Scheduled Task
+   removed and the "Boord Notes Server" one registered in its place.
+
+3. **Write the release key fingerprint** into `data\release_key.fpr` - see
+   [Pulling future updates](#pulling-future-updates) for the exact command.
+
+4. **Re-point Tailscale**, with all three mappings together - see
+   [Tailscale HTTPS](#tailscale-https-required-for-the-installable-offline-app).
+   This is also what repairs Boord Owner, which has been fighting this app
+   for `:8443`.
+
+5. **Re-add the Home Screen icon on both phones**, from the new `:9443`
+   address, and clear the old one's website data. The old icon does not just
+   stop working - it keeps drawing this app's cached screens over Boord
+   Owner's server. See [chapter 7](#7-troubleshooting--faq).
+
+From step 2 onward `update_server.bat` is the signed-tag one, and the next
+update is a single double-click again.
 
 ### Stopping, starting, and restarting the server
 
@@ -146,13 +183,20 @@ fingerprint the installer wrote for you would be the repo vouching for
 itself. In this folder, run:
 
 ```bat
-echo 67C64CFDD584DD140E58AF6E329C9B9DD0562A9D> data\release_key.fpr
+>data\release_key.fpr echo 67C64CFDD584DD140E58AF6E329C9B9DD0562A9D
 ```
 
-There is **no space before the `>`** - `echo` would write one into the file
-and the fingerprint would never match. It is the same key Boord and Boord
-Owner already trust on this machine; their own `data\release_key.fpr` holds
-the identical value, so you can copy it from there instead of typing it.
+Type it exactly like that, **redirect first**. `cmd` reads a digit written
+immediately before a `>` as a file handle number, so the more natural
+`echo <FINGERPRINT>> data\release_key.fpr` quietly drops a fingerprint's last
+character whenever it happens to be a digit - and the next update then fails
+its signature check, which reads as tampering rather than as a typo. This
+key's fingerprint ends in `D` and would survive either form, but the next one
+might not.
+
+It is the same key Boord and Boord Owner already trust on this machine; their
+own `data\release_key.fpr` holds the identical value, so you can copy it from
+there instead of typing it.
 
 The file lives in `data\` rather than in the checkout on purpose: a
 fingerprint inside the repo would be rewritten by the very update it is
@@ -452,19 +496,19 @@ expired Tailscale connection are the most likely causes.
 
 **A camera photo won't attach / the Add Photo button does nothing.**
 Confirm the app was opened from its installed Home Screen icon over the
-HTTPS/Tailscale address, not a plain `http://` LAN address opened directly
-in Safari - camera access in an installed PWA needs the secure-context HTTPS
-setup described in [chapter 2](#tailscale-https-required-for-the-installable-offline-app).
+HTTPS/Tailscale address - camera access in an installed PWA needs the
+secure-context HTTPS setup described in
+[chapter 2](#tailscale-https-required-for-the-installable-offline-app).
 
 **Notes aren't recording a location.** The line above the Save button says
 what the app has: "Finding your location..." means it's still looking, and
 "No location available" means iOS refused or there's no fix. Check, in order:
 
 1. The app was opened from its Home Screen icon on the HTTPS address
-   (`https://<server-name>.<tailnet-name>.ts.net:9443/app/`). On a plain
-   `http://` LAN address iOS blocks location outright and the app can only
-   report that none arrived - the commonest cause, and it looks like a broken
-   feature rather than a wrong address.
+   (`https://<server-name>.<tailnet-name>.ts.net:9443/app/`). On anything
+   that is not a secure origin iOS blocks location outright and the app can
+   only report that none arrived - the commonest cause, and it looks like a
+   broken feature rather than a wrong address.
 2. Settings → Privacy & Security → Location Services is on, and the app (or
    Safari) is allowed "While Using".
 3. He's outdoors and has waited a few seconds - a first fix under a shed roof
@@ -482,6 +526,23 @@ language.** On the iPhone: Settings → General → Keyboard → Keyboards →
 confirm both the desired language keyboards are added; iOS dictation
 follows whichever keyboard is currently active, switchable with the globe
 key while typing.
+
+**The app opens but everything fails, on the old `:8443` address.** This is
+the one migration trap in the move to `:9443`. Until this release the manual
+put this app on `:8443`, which is Boord Owner's port. A phone whose Home
+Screen icon still points at `https://<server>.<tailnet>.ts.net:8443/app/` now
+reaches *Boord Owner's* server - and because this app's offline shell is
+still cached against that address, it will happily draw the Boord Notes UI
+from cache while every request behind it fails.
+
+The symptom is therefore an app that looks completely normal and can do
+nothing. Fixing it on the phone takes both halves:
+
+1. Delete the old Home Screen icon.
+2. Safari → Settings → Advanced → Website Data, find the server's name, and
+   remove it. This is what clears the stale offline copy; deleting the icon
+   alone does not.
+3. Re-add the icon from the new address, `.../:9443/app/`.
 
 **Son can see the app but has no Save/Edit/Archive buttons.**
 That's expected - his account is *viewer*-only by design (see

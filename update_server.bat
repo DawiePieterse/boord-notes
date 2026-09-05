@@ -46,11 +46,11 @@ if not exist "%FPR_FILE%" (
     echo     %FPR_FILE%
     echo.
     echo This server cannot tell a genuine release from a tampered one, so it
-    echo will not update. Set it once, from this folder - note there is NO
-    echo space before the ^>, or echo writes one into the file and the
-    echo fingerprint will never match:
+    echo will not update. Set it once, from this folder - type it exactly as
+    echo shown, redirect first, which keeps a fingerprint ending in a digit
+    echo from having that digit eaten as a file handle number:
     echo.
-    echo     echo ^<FINGERPRINT^>^> data\release_key.fpr
+    echo     ^>data\release_key.fpr echo ^<FINGERPRINT^>
     echo.
     echo If this PC already runs Boord or Boord Owner, it is the same key:
     echo copy the fingerprint out of that app's own data\release_key.fpr.
@@ -246,7 +246,20 @@ cd /d "%~dp0"
 
 :: Leave a note of the tag now checked out, for whoever has to work out what
 :: a machine is running when git cannot answer.
-echo !NEWTAG!> "%~dp0data\installed_version.txt"
+::
+:: The redirect is written FIRST, which looks odd and is load-bearing. cmd
+:: reads a digit sitting immediately before a redirection arrow as a file
+:: handle number, so writing the tag first and the arrow after it silently
+:: mangles every tag ending in a digit: v1.5.1 stores "v1.5." because the
+:: trailing 1 is eaten as handle 1, and v2.0 stores nothing at all because
+:: the trailing 0 is eaten as handle 0 and the file is opened as stdin.
+:: Leading with the redirect leaves no digit beside it. Boord's and Boord
+:: Owner's updaters still carry the original line, and this bug with it.
+::
+:: (The arrow is spelled out rather than typed in these comment lines for
+:: the same family of reason - a redirection character in a :: line is only
+:: safely ignored at the top level of a script.)
+>"%~dp0data\installed_version.txt" echo !NEWTAG!
 
 echo.
 echo ==^> Restarting the server...

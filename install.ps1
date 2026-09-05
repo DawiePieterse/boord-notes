@@ -15,7 +15,7 @@ $BackendDir = Join-Path $RepoRoot "backend"
 $VenvDir = Join-Path $BackendDir ".venv"
 $DataDir = Join-Path $RepoRoot "data"
 # 8020 continues the family's numbering on this machine: Boord 8000, Boord
-# Owner 8010, Boord Notes 8020. See step 11 for the Tailscale side, where the
+# Owner 8010, Boord Notes 8020. See step 10 for the Tailscale side, where the
 # three are 443, 8443 and 9443 - that is the part that actually collides.
 $Port = 8020
 $TailscaleHttpsPort = 9443
@@ -55,6 +55,13 @@ try {
     Write-Host ""
     Write-Host "Boord Notes - Server Installer" -ForegroundColor Cyan
     Write-Host "================================================" -ForegroundColor Cyan
+
+    # data\ is gitignored, so a fresh clone arrives without one. The server
+    # creates it on first start, but the release_key.fpr command printed at
+    # the end has to work even on a run where the server did not come up -
+    # otherwise the one manual step left fails with "The system cannot find
+    # the path specified" and looks like a broken installer.
+    if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir | Out-Null }
 
     # --- Step 1: Find or install Python ---
     Write-Step "Checking for Python 3.9+ (64-bit)..."
@@ -342,18 +349,22 @@ cd /d "$BackendDir"
             Write-Host " Another Boord app on this PC already trusts this key. Same"
             Write-Host " publisher, same key - so in this folder, run:"
             Write-Host ""
-            Write-Host "     echo $siblingFpr> data\release_key.fpr" -ForegroundColor Cyan
+            Write-Host "     >data\release_key.fpr echo $siblingFpr" -ForegroundColor Cyan
         } else {
             Write-Host " In this folder, run:"
             Write-Host ""
-            Write-Host "     echo <FINGERPRINT>> data\release_key.fpr" -ForegroundColor Cyan
+            Write-Host "     >data\release_key.fpr echo <FINGERPRINT>" -ForegroundColor Cyan
             Write-Host ""
             Write-Host " ...with the 40-character fingerprint from whoever maintains this"
             Write-Host " install."
         }
         Write-Host ""
-        Write-Warn "Note there is NO space before the > - echo would write one into the"
-        Write-Warn "file, and the fingerprint would then never match."
+        Write-Warn "Type it exactly as shown, redirect first. cmd reads a digit written"
+        Write-Warn "immediately before a > as a file handle number, so the more natural"
+        Write-Warn "'echo <FINGERPRINT>> file' quietly loses a fingerprint's last"
+        Write-Warn "character whenever it happens to be a digit - and the update then"
+        Write-Warn "fails the signature check, which looks like tampering rather than"
+        Write-Warn "like a typo."
     } else {
         $fpr = (Get-Content $FprFile -TotalCount 1).Trim()
         Write-Ok "Release key fingerprint on file: $fpr"
