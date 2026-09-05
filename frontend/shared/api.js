@@ -10,7 +10,7 @@ const NB = {
   // it's obvious at a glance whether a device's cached copy is actually up
   // to date - the service worker revalidates in the background, so a device
   // picks up new code on its second load (see frontend/app/service-worker.js).
-  VERSION: "2.1",
+  VERSION: "2.2",
 
   // Left behind by the versions that had accounts. Cleared once on load so a
   // phone that used to sign in is not carrying a stale token and role around
@@ -28,17 +28,35 @@ const NB = {
     return e instanceof TypeError || (!!e && (e.name === "AbortError" || e.name === "TimeoutError"));
   },
 
-  async api(path, { method = "GET", body, isForm = false } = {}) {
+  // timeoutMs is opt-in, and deliberately so. Photo sync pushes multi-megabyte
+  // uploads over rural signal and must be allowed to take as long as it takes;
+  // but a request whose button is disabled until it settles needs a deadline,
+  // or one hung connection leaves that button dead for the life of the page.
+  // AbortController rather than AbortSignal.timeout(): the farm's phones are
+  // not all new enough for the latter, and the service worker already does the
+  // same thing this way.
+  async api(path, { method = "GET", body, isForm = false, timeoutMs = 0 } = {}) {
     const headers = {};
     let payload = body;
     if (body && !isForm) {
       headers["Content-Type"] = "application/json";
       payload = JSON.stringify(body);
     }
-    const res = await fetch(`${API_BASE}${path}`, { method, headers, body: payload });
+    const controller = timeoutMs > 0 ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    let res;
+    try {
+      res = await fetch(`${API_BASE}${path}`, {
+        method, headers, body: payload, signal: controller ? controller.signal : undefined,
+      });
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`${res.status} ${text}`);
+      const err = new Error(`${res.status} ${text}`);
+      err.status = res.status;   // so callers can tell a server fault from an unreachable server
+      throw err;
     }
     const contentType = res.headers.get("content-type") || "";
     if (contentType.includes("application/json")) return res.json();

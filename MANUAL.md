@@ -35,7 +35,7 @@ Annexe A: [Data Field Reference](#annexe-a-data-field-reference)
 
 ### There is no sign-in
 
-The app opens straight onto the Dashboard. There are no accounts, no
+The app opens straight onto the Capture screen. There are no accounts, no
 passwords, and no roles: **anyone who can reach it can read every note, and
 add, edit or archive notes.** Reaching it is the entire access control, and
 that means Tailscale - see
@@ -362,12 +362,18 @@ detects or can be set per-keyboard under Settings → General → Keyboard →
 Keyboards, if it's not picking up the right language. Tap the keyboard icon
 again (or tap "Done") to stop dictating and review/edit the text normally.
 
-### Camera
+### Photos
 
-The **Add Photo** button opens the iPhone's native camera directly (not a
-generic file picker) - snap a photo and it's attached immediately, resized
-automatically on the phone before it's stored, to keep things fast over
-weak signal.
+The **Add Photo** button asks where the photo should come from:
+
+- **Camera** - opens the phone's native camera directly. Snap a photo and
+  it's attached immediately.
+- **Photo album** - picks one that's already in the phone's photo library.
+- **File** - browses the phone's files (iPhone: the Files app).
+
+Whichever is used, the photo is resized on the phone before it's stored, to
+keep things fast over weak signal, and converted to a JPEG - so an iPhone
+HEIC out of the album attaches just like a camera shot does.
 
 ---
 
@@ -484,6 +490,17 @@ laptop without needing to touch the server itself. On the server, the
 underlying files sit in `data\backups\`, named like
 `backup_20260807_020000.zip`.
 
+While a backup runs the button reads **Backing up...** and is disabled; on a
+season's worth of photos that can take a while. It always comes back, and if
+it fails it says why rather than blaming the connection:
+
+| Message | What it means |
+| --- | --- |
+| `Backup created` | Done - the new zip appears at the top of the list. |
+| `Backup failed - can't reach the server` | The phone couldn't reach the farm PC. Check Tailscale and that the server is running. |
+| `Backup failed on the server (500)` | The server was reached and the backup itself failed - almost always a full disk or `data\backups\` not being writable. Look at the server window for the error. |
+| `Backup timed out` | No answer within two minutes. The backup may still be finishing; re-open Settings in a minute and check whether a new one appeared before running it again. |
+
 **Recommended:** every so often, copy the latest `data\backups\*.zip` file
 off the server entirely (a cloud drive, USB stick, anywhere off that one
 machine) - the 14-backup retention only protects against recent mistakes,
@@ -518,6 +535,9 @@ Confirm the app was opened from its installed Home Screen icon over the
 HTTPS/Tailscale address - camera access in an installed PWA needs the
 secure-context HTTPS setup described in
 [chapter 2](#tailscale-https-required-for-the-installable-offline-app).
+If the **Camera** option is the only one that fails, **Photo album** and
+**File** still work: take the photo with the normal camera app and attach it
+from the album.
 
 **Notes aren't recording a location.** The line above the Save button says
 what the app has: "Finding your location..." means it's still looking, and

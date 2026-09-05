@@ -37,7 +37,11 @@ function showApp() {
   document.getElementById("appVersion").textContent = `v${NB.VERSION}`;
   loadTagSuggestions();
   updateUnsyncedBadge();
-  showPage("dashboard");
+  // Capture, not Dashboard: the app is opened to write a note down before it
+  // is forgotten, so the textarea and the GPS warm-up should already be there.
+  // The other two screens still load in the background so switching tabs is
+  // instant.
+  showPage("capture");
   loadDashboard();
   loadEntries();
 }
@@ -157,13 +161,45 @@ function renderPhotoThumbs() {
   });
 }
 
+// Camera / album / file are three separate <input>s (see index.html): only one
+// of them may carry `capture`, because that attribute is what sends the phone
+// straight to the camera and leaves no route to the album.
+const PHOTO_INPUT_IDS = {
+  camera: "photoInputCamera",
+  album: "photoInputAlbum",
+  file: "photoInputFile",
+};
+
+function openPhotoSourceSheet() {
+  const sheet = document.getElementById("photoSourceSheet");
+  sheet.classList.remove("hidden");
+  sheet.classList.add("flex");
+}
+
+function closePhotoSourceSheet() {
+  const sheet = document.getElementById("photoSourceSheet");
+  sheet.classList.add("hidden");
+  sheet.classList.remove("flex");
+}
+
+function pickPhotoSource(source) {
+  closePhotoSourceSheet();
+  const input = document.getElementById(PHOTO_INPUT_IDS[source]);
+  if (input) input.click();
+}
+
 async function handlePhotoInput(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const blob = await downscaleImage(file);
-  pendingPhotos.push({ tempId: NB.uuid(), blob, filename: `photo-${Date.now()}.jpg` });
-  renderPhotoThumbs();
+  // Every source funnels through here. Whatever the picker hands over - a
+  // camera JPEG, a HEIC from the album, a PNG off the file system - comes out
+  // of downscaleImage as a JPEG blob and is stored under a .jpg name, which is
+  // what the server's upload route accepts.
+  const files = Array.from(event.target.files || []);
   event.target.value = "";
+  for (const file of files) {
+    const blob = await downscaleImage(file);
+    pendingPhotos.push({ tempId: NB.uuid(), blob, filename: `photo-${Date.now()}.jpg` });
+  }
+  if (files.length) renderPhotoThumbs();
 }
 
 // ---------------------------------------------------------------------
@@ -727,6 +763,12 @@ function formatBytes(bytes) {
 async function loadBackups() {
   const card = document.getElementById("backupsCard");
   card.classList.remove("hidden");
+  // If the phone froze the page mid-backup, triggerBackup's finally never ran
+  // and the button is still greyed out. Opening Settings is the one moment we
+  // know the user is looking at it, so it is where the button gets un-stuck.
+  const btn = document.getElementById("backupNowBtn");
+  btn.disabled = false;
+  btn.textContent = "Backup Now";
   let backups;
   try {
     backups = await NB.api("/api/backups");
@@ -754,16 +796,38 @@ async function loadBackups() {
   });
 }
 
+// Zipping the database and every photo is not instant on the farm PC, so the
+// button has to stay disabled while it runs - which makes it the one control
+// in the app that a request going missing can kill outright. Without a
+// deadline the await never settles, the finally never runs, and the button is
+// left greyed out for the life of the page; on an installed PWA that page
+// survives for days, so "Backup Now does nothing" outlives any number of
+// retries. Long enough for a real backup of a season of photos, short enough
+// that a dead connection gives the button back.
+const BACKUP_TIMEOUT_MS = 120000;
+
 async function triggerBackup() {
   const btn = document.getElementById("backupNowBtn");
+  if (btn.disabled) return;
   btn.disabled = true;
   btn.textContent = "Backing up...";
   try {
-    await NB.api("/api/backups", { method: "POST" });
+    await NB.api("/api/backups", { method: "POST", timeoutMs: BACKUP_TIMEOUT_MS });
     NB.toast("Backup created");
     await loadBackups();
   } catch (e) {
-    NB.toast("Backup failed - check connection and try again");
+    // "Check connection" was the answer to every failure here, which sends
+    // whoever is standing at the PC off to look at the wifi for a fault that
+    // is on the disk. A backup can fail because the drive is full or the
+    // photos folder isn't writable, and that has to be distinguishable.
+    console.error("Backup failed:", e);
+    if (e && e.name === "AbortError") {
+      NB.toast("Backup timed out - it may still be finishing on the server");
+    } else if (NB.isNetworkError(e)) {
+      NB.toast("Backup failed - can't reach the server");
+    } else {
+      NB.toast(`Backup failed on the server (${e && e.status ? e.status : "error"}) - see the server window`);
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = "Backup Now";
@@ -780,7 +844,17 @@ function init() {
   document.getElementById("tagInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); addTagFromInput(); }
   });
-  document.getElementById("photoInput").addEventListener("change", handlePhotoInput);
+  document.getElementById("addPhotoBtn").addEventListener("click", openPhotoSourceSheet);
+  document.getElementById("photoSourceCancel").addEventListener("click", closePhotoSourceSheet);
+  document.getElementById("photoSourceSheet").addEventListener("click", (e) => {
+    if (e.target.id === "photoSourceSheet") closePhotoSourceSheet();  // tap the backdrop
+  });
+  document.querySelectorAll(".photo-source").forEach((btn) => {
+    btn.addEventListener("click", () => pickPhotoSource(btn.dataset.source));
+  });
+  Object.values(PHOTO_INPUT_IDS).forEach((id) => {
+    document.getElementById(id).addEventListener("change", handlePhotoInput);
+  });
   document.getElementById("gpsToggle").addEventListener("change", (e) => {
     NB.setGpsEnabled(e.target.checked);
     if (e.target.checked) {

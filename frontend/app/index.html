@@ -37,8 +37,8 @@
   </div>
 
   <div class="flex overflow-x-auto bg-white shadow sticky top-0 z-10">
-    <button class="tab-btn" data-tab="capture" id="tabCapture">Capture</button>
-    <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+    <button class="tab-btn active" data-tab="capture" id="tabCapture">Capture</button>
+    <button class="tab-btn" data-tab="dashboard">Dashboard</button>
     <button class="tab-btn" data-tab="entries">Entries</button>
     <button class="tab-btn" data-tab="settings">Settings</button>
   </div>
@@ -46,7 +46,7 @@
   <div class="p-4 max-w-2xl mx-auto">
 
     <!-- CAPTURE -->
-    <div id="page-capture" class="page hidden space-y-4">
+    <div id="page-capture" class="page space-y-4">
       <div class="bg-white rounded-2xl shadow p-4 space-y-4">
         <div class="text-lg font-bold" id="captureFormTitle">New Entry</div>
 
@@ -83,10 +83,19 @@
         <div>
           <label class="text-xs font-medium text-slate-500 block mb-1">Photos</label>
           <div id="photoThumbs" class="flex flex-wrap gap-2 mb-2"></div>
-          <label class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium cursor-pointer">
+          <button type="button" id="addPhotoBtn" class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium">
             <i class="fa-solid fa-camera"></i> Add Photo
-            <input id="photoInput" type="file" accept="image/*" capture="environment" class="hidden">
-          </label>
+          </button>
+          <!-- One input per source. The `capture` attribute is what forces the
+               camera to open directly, so it can only ever be on ONE of these -
+               a single shared input with `capture` set is exactly why there was
+               no way to reach the album. Everything picked here is re-encoded
+               to JPEG by downscaleImage() before it is stored, so a HEIC out of
+               the iPhone album or a PNG off the file system both arrive at the
+               server as the .jpg its upload route accepts. -->
+          <input id="photoInputCamera" type="file" accept="image/*" capture="environment" class="hidden">
+          <input id="photoInputAlbum" type="file" accept="image/*" class="hidden">
+          <input id="photoInputFile" type="file" accept="image/*,.heic,.heif" class="hidden">
         </div>
 
         <div class="flex gap-2 pt-2">
@@ -100,7 +109,7 @@
     </div>
 
     <!-- DASHBOARD -->
-    <div id="page-dashboard" class="page space-y-4">
+    <div id="page-dashboard" class="page hidden space-y-4">
       <div class="grid grid-cols-2 gap-3">
         <div class="bg-white rounded-xl shadow p-4">
           <div class="text-xs text-slate-500">Total Entries</div>
@@ -160,6 +169,22 @@
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- Photo source chooser. A sheet rather than three buttons on the form:
+     Capture is the screen Andre uses one-handed in an orchard, and three
+     permanent buttons push Save Note below the fold on a phone. -->
+<div id="photoSourceSheet" class="fixed inset-0 bg-black/50 hidden items-end justify-center z-40">
+  <div class="bg-white rounded-t-2xl w-full max-w-lg p-4 space-y-2">
+    <div class="text-sm font-bold text-slate-500 px-1 pb-1">Add a photo from</div>
+    <!-- Text, not icons. shared/fontawesome/fa-subset.css is subset to the 11
+         glyphs the app already draws; there is no album or folder glyph in the
+         font file, and a class alone renders a blank box on the phones. -->
+    <button type="button" data-source="camera" class="photo-source w-full rounded-xl py-3 px-4 bg-slate-100 text-left font-semibold">Camera</button>
+    <button type="button" data-source="album" class="photo-source w-full rounded-xl py-3 px-4 bg-slate-100 text-left font-semibold">Photo album</button>
+    <button type="button" data-source="file" class="photo-source w-full rounded-xl py-3 px-4 bg-slate-100 text-left font-semibold">File</button>
+    <button type="button" id="photoSourceCancel" class="w-full rounded-xl py-3 text-slate-500 font-semibold">Cancel</button>
   </div>
 </div>
 
