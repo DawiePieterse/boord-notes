@@ -1,4 +1,4 @@
-// Bekfontein Farm Notebook: capture, browse, and offline-sync farm knowledge.
+// Boord Notes: capture, browse, and offline-sync farm knowledge.
 
 let currentTags = [];
 let pendingPhotos = [];   // [{tempId, blob, filename}] - newly added, not yet synced
@@ -368,7 +368,7 @@ async function saveEntry() {
   }
 
   NB.beepSaved();
-  NB.toast(editingEntryId ? "Entry updated" : "Saved to notebook");
+  NB.toast(editingEntryId ? "Entry updated" : "Note saved");
   resetCaptureForm();
   updateUnsyncedBadge();
   showPage("entries");

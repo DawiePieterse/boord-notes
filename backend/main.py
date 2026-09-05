@@ -2,13 +2,14 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from backup import start_backup_scheduler
 from db import PHOTOS_DIR, create_db_and_tables, seed_defaults
 from routers import auth, backups, entries, tags, weather
 
-app = FastAPI(title="Bekfontein Farm Notebook")
+app = FastAPI(title="Boord Notes")
 
 app.add_middleware(
     CORSMiddleware,
@@ -45,6 +46,20 @@ class NoCacheStaticFiles(StaticFiles):
         response = super().file_response(*args, **kwargs)
         response.headers["Cache-Control"] = "no-cache"
         return response
+
+
+@app.get("/", include_in_schema=False)
+def root_redirect():
+    """The app itself lives under /app/, but the address people are handed is
+    the bare `https://<machine>.<tailnet>.ts.net:9443/` that `tailscale serve`
+    publishes. Without this that address answers `{"detail":"Not Found"}` -
+    which on a machine also running Boord and Boord Owner looks exactly like
+    the serve mapping pointing at the wrong app, and sends whoever is
+    debugging it to `tailscale serve status` for a fault that is not there.
+
+    Registered before the catch-all static mount below, which would otherwise
+    match "/" first."""
+    return RedirectResponse("/app/")
 
 
 app.mount("/photos", StaticFiles(directory=PHOTOS_DIR), name="photos")

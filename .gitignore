@@ -10,3 +10,16 @@ data/backups/
 data/secret_key
 .DS_Store
 *.pyc
+
+# Written by install.ps1 with this machine's own absolute paths (venv
+# location), so not portable and not committed. start_server.bat is the old
+# name; install.ps1 deletes it, but an existing checkout may still have one.
+start_notes_server.bat
+start_server.bat
+
+# The trust root for signed updates, and a note of which tag is checked out.
+# Both are per-machine and must live outside the tracked files - a
+# fingerprint inside the repo would be rewritten by the very update it is
+# supposed to vouch for. See update_server.bat.
+data/release_key.fpr
+data/installed_version.txt

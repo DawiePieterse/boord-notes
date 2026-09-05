@@ -1,10 +1,10 @@
-// App-shell cache so the notebook PWA still loads (and can capture new
+// App-shell cache so the Boord Notes PWA still loads (and can capture new
 // entries) with zero signal. Data (entries, tags, photos) always goes over
 // the network when available - this only guarantees the UI itself is
 // installable/offline. See idb.js/app.js for the actual offline-capture and
 // sync logic.
 const CACHE_PREFIX = "nb-app-";
-const CACHE = "nb-app-v9";
+const CACHE = "nb-app-v10";
 const REVALIDATE_TIMEOUT_MS = 10000;
 const SHELL = [
   "./",

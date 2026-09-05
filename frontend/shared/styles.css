@@ -1,24 +1,37 @@
+/* Boord Notes shares the Boord family's look, so the palette below is Boord's
+   own frontend/shared/styles.css verbatim - same hexes, same variable names.
+   Keeping them identical is the point: the three apps sit next to each other
+   on the same home screen and are reached from the same tailnet host, so a
+   near-miss blue reads as a different product rather than a sibling. */
 :root {
-  --nb-blue: #1e3a8a;
-  --nb-green: #166534;
-  --nb-red: #b91c1c;
+  --boord-blue: #0A2F6B;
+  --boord-red: #C8102E;
+  --boord-green: #16a34a;
+  --boord-yellow: #eab308;
+  /* Notes' own accent, matching its icon leaf. Not in Boord's palette - the
+     three accents there were all spoken for by Field/Receiving/Admin. */
+  --boord-sky: #38bdf8;
 }
 
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Keep the browser's native pull-to-refresh out of the way. */
+  overscroll-behavior-y: contain;
+}
 
-.nb-header { background: var(--nb-blue); color: white; }
-.nb-btn-primary { background: var(--nb-blue); color: white; }
-.nb-btn-primary:active { opacity: 0.85; }
-.nb-btn-danger { background: var(--nb-red); color: white; }
+.boord-header { background: var(--boord-blue); color: white; }
+.boord-btn-primary { background: var(--boord-blue); color: white; }
+.boord-btn-primary:active { opacity: 0.85; }
+.boord-btn-danger { background: var(--boord-red); color: white; }
 
-.tab-btn { flex: 1; text-align: center; padding: 0.6rem 0; font-size: 0.85rem; }
-.tab-btn.active { background: var(--nb-green); color: white; font-weight: 600; border-radius: 999px; }
+.tab-btn { flex: 1; text-align: center; padding: 0.6rem 0; font-size: 0.8rem; }
+.tab-btn.active { color: var(--boord-blue); font-weight: 600; border-bottom: 3px solid var(--boord-blue); }
 
 .tag-chip {
   display: inline-flex; align-items: center; gap: 0.25rem;
   font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em;
   padding: 0.15rem 0.65rem; border-radius: 999px;
-  background: #dcfce7; color: var(--nb-green);
+  background: #dcfce7; color: #166534;
 }
 .tag-chip button { color: #16653480; }
 
@@ -27,11 +40,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   padding: 0.2rem 0.6rem; border-radius: 999px;
 }
 
+/* Notes-only control - Boord has no toggles, so there is nothing to match. */
 .nb-switch { position: relative; display: inline-block; width: 42px; height: 24px; flex-shrink: 0; }
 .nb-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
 .nb-switch-track { position: absolute; inset: 0; background: #cbd5e1; border-radius: 999px; cursor: pointer; transition: background 0.15s; }
 .nb-switch-track::before { content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: transform 0.15s; }
-.nb-switch input:checked + .nb-switch-track { background: var(--nb-green); }
+.nb-switch input:checked + .nb-switch-track { background: var(--boord-green); }
 .nb-switch input:checked + .nb-switch-track::before { transform: translateX(18px); }
 
 .toast {

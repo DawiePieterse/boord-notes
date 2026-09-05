@@ -1,4 +1,7 @@
-// Shared helpers used by the notebook app.
+// Shared helpers used by the Boord Notes app.
+// The NB namespace and the nb_* localStorage keys keep their original names
+// through the rename on purpose: the keys hold the login token, so renaming
+// them would sign every phone out on the update that landed the new name.
 // Everything is served from the same origin as the backend, so API_BASE is relative.
 const API_BASE = "";
 
@@ -7,7 +10,7 @@ const NB = {
   // it's obvious at a glance whether a device's cached copy is actually up
   // to date - the service worker revalidates in the background, so a device
   // picks up new code on its second load (see frontend/app/service-worker.js).
-  VERSION: "1.7",
+  VERSION: "2.0",
 
   getToken() { return localStorage.getItem("nb_token"); },
   setToken(t) { localStorage.setItem("nb_token", t); },

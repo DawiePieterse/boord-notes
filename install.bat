@@ -1,6 +1,7 @@
 @echo off
-:: Bekfontein Farm Notebook - double-click this file to install/set up
-:: the server on this PC. See MANUAL.md chapter 2 for what it does and for
+:: Boord Notes - double-click this file to install/set up the server on this
+:: PC. It runs BESIDE Boord and Boord Owner (its own port, its own auto-start
+:: task, its own database). See MANUAL.md chapter 2 for what it does and for
 :: the manual step-by-step alternative.
 ::
 :: Uses "-ExecutionPolicy Bypass" scoped to this one invocation only - it

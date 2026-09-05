@@ -1,10 +1,20 @@
-# Bekfontein Farm Notebook - User & Admin Manual
+# Boord Notes - User & Admin Manual
 
 A private, two-person app for Andre to capture farm knowledge - procedures,
 equipment quirks, seasonal timing, anything worth handing over - so his son
-has it all in one place later. It is a completely separate app from
-Laughing Waters Harvesting: its own server process, its own port, its own
-database. Nothing here talks to that app.
+has it all in one place later.
+
+It is the third of the Boord apps and runs beside the other two on the farm
+server: its own process, its own port, its own database, its own auto-start
+task. Nothing here reads or writes Boord's data - the only things the three
+share are the machine they run on, the tailnet that reaches them, and the
+release key that signs their updates.
+
+| App | Local port | Tailscale address |
+| --- | --- | --- |
+| Boord | 8000 | `https://<server>.<tailnet>.ts.net/` |
+| Boord Owner | 8010 | `https://<server>.<tailnet>.ts.net:8443/` |
+| **Boord Notes** | **8020** | **`https://<server>.<tailnet>.ts.net:9443/app/`** |
 
 ## Table of Contents
 
@@ -63,20 +73,24 @@ what to watch for.
 
 ## 2. Initial Server Setup
 
-This app runs as a **second, independent process on the same PC** as
-Laughing Waters Harvesting, if that's already set up on this machine. It
-does not share a port, a database, or a Scheduled Task with that app - the
-two can be stopped, started, and updated completely independently.
+This app runs as an **independent process on the same PC** as Boord and
+Boord Owner. It shares no port, database, or Scheduled Task with either -
+all three can be stopped, started, and updated independently.
 
 ### Prerequisites
 
-- Windows 10/11 PC (or Mac/Linux, run manually - see the harvest app's
-  manual for the equivalent non-Windows steps, which apply identically
-  here).
+- Windows 10/11 PC (or Mac/Linux, run manually - see Boord's manual for the
+  equivalent non-Windows steps, which apply identically here).
 - The PC stays on and connected to the network whenever Andre or his son
   need to reach the app.
 - Internet access for the one-time setup (downloading Python and
   dependencies) and for pulling future updates via `update_server.bat`.
+- **Tailscale**, installed and signed in on this PC. It is not optional for
+  this app - see [Tailscale HTTPS](#tailscale-https-required-for-the-installable-offline-app)
+  below. The server itself is bound to `127.0.0.1` and cannot be reached
+  from the farm's wifi at all.
+- **GnuPG** (Gpg4win), if you want to be able to install updates. Boord's
+  own installer sets this up; if this PC already runs Boord, it is done.
 
 ### Quick setup: the automated installer (recommended)
 
@@ -87,75 +101,127 @@ two can be stopped, started, and updated completely independently.
    Account Control) - the installer needs administrator rights once to
    register the Scheduled Task and firewall rule.
 4. Wait for it to finish - it installs Python if needed, creates the app's
-   virtual environment, installs dependencies, opens the firewall for the
-   app's port, and registers a Scheduled Task ("Bekfontein Farm Notebook
-   Server") so the server starts automatically every time the PC boots, with
-   no one needing to be logged in.
-5. It prints the address to use, e.g. `http://<this-pc's-IP>:8001/app/`.
+   virtual environment, installs dependencies, imports the release signing
+   key, and registers a Scheduled Task ("Boord Notes Server") so the server
+   starts automatically every time the PC boots, with no one needing to be
+   logged in.
+5. It prints the `tailscale serve` command that publishes the app, and the
+   one manual step left: writing the release key fingerprint into
+   `data\release_key.fpr` (see [Pulling future updates](#pulling-future-updates)).
+
+Note what it deliberately does **not** do: it does not open a firewall port,
+and it **deletes** the port-8001 rule older versions of this installer added.
+The server binds `127.0.0.1`, so there is nothing for an inbound rule to
+reach. A server that has been running since before this change has to have
+that rule closed, or the loopback bind buys nothing on exactly the machine
+that has been exposed longest. The installer also removes the old
+"Bekfontein Farm Notebook Server" task, so the PC does not boot two copies.
 
 Safe to re-run any time - each step checks what's already done and skips it.
 
 ### Stopping, starting, and restarting the server
 
-Same mechanism as the harvest app, just a different task name:
+Same mechanism as the other two apps, just a different task name:
 
 ```powershell
-schtasks /end /tn "Bekfontein Farm Notebook Server"
-schtasks /run /tn "Bekfontein Farm Notebook Server"
+schtasks /end /tn "Boord Notes Server"
+schtasks /run /tn "Boord Notes Server"
 ```
 
 ### Pulling future updates
 
-Double-click **`update_server.bat`**. It pulls the latest code from this
-app's own GitHub repo, installs any new dependencies, and restarts the
-server - one step, same pattern as the harvest app's updater.
+Double-click **`update_server.bat`**. It installs the newest **signed**
+release, brings the database up to date, and restarts the server - one step,
+the same pattern and the same signing key as Boord and Boord Owner.
+
+It does not `git pull` a branch. A branch pull trusts whoever can push to
+the repo, and this server runs as SYSTEM, so a stolen GitHub token would be
+code execution on the farm PC. Instead it checks out the newest `v*` tag
+carrying a GPG signature from the release key, and refuses to update at all
+if that signature is missing, broken, or made by any other key.
+
+**One-time setup before the first update will work.** The server has to be
+told which key it trusts, and that has to be a person's decision - a
+fingerprint the installer wrote for you would be the repo vouching for
+itself. In this folder, run:
+
+```bat
+echo 67C64CFDD584DD140E58AF6E329C9B9DD0562A9D> data\release_key.fpr
+```
+
+There is **no space before the `>`** - `echo` would write one into the file
+and the fingerprint would never match. It is the same key Boord and Boord
+Owner already trust on this machine; their own `data\release_key.fpr` holds
+the identical value, so you can copy it from there instead of typing it.
+
+The file lives in `data\` rather than in the checkout on purpose: a
+fingerprint inside the repo would be rewritten by the very update it is
+supposed to be vouching for.
 
 ### Tailscale HTTPS (required for the installable offline app)
 
-Unlike the harvest app (which only needs HTTPS for its camera QR scanner),
-this app needs HTTPS for a different reason: **installing the app to the
-Home Screen and registering its offline service worker both require a
-secure context** (HTTPS, or `localhost`) - a plain `http://192.168.x.x:8001/`
-address will let Andre log in and use the app in a browser tab, but it will
-silently fail to install as an app icon or work offline, which defeats the
-entire point of this app for someone walking the farm without signal.
+This app is reached over Tailscale and no other way. The server binds
+`127.0.0.1`, so nothing on the farm's wifi can see it; `tailscale serve` puts
+it on the tailnet with a real Let's Encrypt certificate that Tailscale renews
+itself. This is the same arrangement Boord Owner uses.
 
-If Tailscale is already set up on this server for the harvest app, reuse it
-- just add a second mapping for this app's own port:
+HTTPS is not a nicety here. **Installing the app to the Home Screen and
+registering its offline service worker both require a secure context**
+(HTTPS, or `localhost`), and so do the camera and a note's GPS location. A
+plain `http://192.168.x.x:8020/` address would let Andre log in and use the
+app in a browser tab, then silently fail to install, work offline, take a
+photo, or record where a note was made - which is the entire point of the app
+for someone walking the farm without signal.
 
-```bash
-tailscale serve --bg --https=443 http://localhost:8001
+Needs **HTTPS Certificates** enabled for the tailnet (admin console → DNS).
+
+**All three mappings, in one place.** `:443` is one slot per machine and this
+PC runs three apps, so each needs its own port. Set all three together rather
+than adding one - that is the only way to be sure of what the machine ends up
+with:
+
+```bat
+tailscale serve reset
+tailscale serve --bg --https=443  http://localhost:8000
+tailscale serve --bg --https=8443 http://localhost:8010
+tailscale serve --bg --https=9443 http://localhost:8020
 ```
 
-(Tailscale can only bind one thing to port 443 externally per hostname; if
-the harvest app already claims `:443`, use a distinct Tailscale hostname or
-port for this app - run `tailscale serve status` to see what's already
-mapped, and `tailscale serve --https=8443 http://localhost:8001` as an
-alternative if needed.) Find the exact address with `tailscale status` - it
-looks like `https://<server-name>.<tailnet-name>.ts.net/`.
-
-**On this farm's server the harvest app holds the default port, so this app
-lives on `:8443`.** `tailscale serve status` shows both mappings, and the one
-proxying to `http://localhost:8001` is this app:
+Boord takes 443 because its Field QR scanner has to be what the bare address
+reaches. Boord Owner takes 8443. This app takes 9443. `tailscale serve status`
+should then list all three:
 
 ```
 $ tailscale serve status
 https://<server-name>.<tailnet-name>.ts.net (tailnet only)
-|-- / proxy http://localhost:8000          <- harvest app
+|-- / proxy http://localhost:8000          <- Boord
 
 https://<server-name>.<tailnet-name>.ts.net:8443 (tailnet only)
-|-- / proxy http://localhost:8001          <- this app
+|-- / proxy http://localhost:8010          <- Boord Owner
+
+https://<server-name>.<tailnet-name>.ts.net:9443 (tailnet only)
+|-- / proxy http://localhost:8020          <- this app
 ```
 
 which makes this app's address
-`https://<server-name>.<tailnet-name>.ts.net:8443/app/`, filling in the real
+`https://<server-name>.<tailnet-name>.ts.net:9443/app/`, filling in the real
 server and tailnet names from that output - see
 [chapter 3](#this-apps-address).
 
-If Tailscale isn't set up on this server yet, see the harvest app's
-`MANUAL.md` chapter 2, section "Connecting external users with Tailscale" -
-the setup steps are identical, this app just needs its own `tailscale serve`
-line pointed at port 8001 instead of 8000.
+**Two apps claiming one port does not look like a port clash.** Whichever
+`serve` command ran last silently wins, and the loser's address loads and
+answers `{"detail":"Not Found"}` - that is the *other* app replying that it
+has no such page. Check `tailscale serve status` before suspecting anything
+else. Earlier versions of this manual told you to put this app on `:8443`,
+which is Boord Owner's port; a server set up from those instructions has one
+of the two apps unreachable right now, and the `serve reset` above is the fix.
+
+**Use `serve`, never `funnel`.** Funnel would publish the farm's notes on the
+open internet to anyone who guessed the URL.
+
+If Tailscale isn't set up on this server yet, see Boord's `MANUAL.md`
+chapter 2, section "Connecting external users with Tailscale" - the setup
+steps are identical, this app just needs its own `serve` line.
 
 ### Changing the default passwords
 
@@ -164,10 +230,11 @@ password (`ChangeMe123!` the first time) and a new password twice, then
 **Save New Password**. Do this once for `andre` and once for `devin` - each
 account only changes its own password while logged in as that account.
 
-Since the app is only reachable at all by devices on the farm's own
-network or the shared Tailscale tailnet, this is a smaller risk than an
-app open to the public internet - but it's still worth doing once, soon
-after setup.
+Since the app is only reachable by devices on the tailnet, this is a smaller
+risk than an app open to the public internet - but it's still worth doing
+once, soon after setup. Note the difference from Boord Owner, which has no
+sign-in at all: this app keeps its two accounts, so the tailnet and the
+passwords are two locks rather than one.
 
 ---
 
@@ -187,7 +254,7 @@ Screen icon.
 ### This app's address
 
 ```
-https://<server-name>.<tailnet-name>.ts.net:8443/app/
+https://<server-name>.<tailnet-name>.ts.net:9443/app/
 ```
 
 **Both accounts use this same address** - Andre and his son open the identical
@@ -198,26 +265,31 @@ the server, so a different URL would neither add nor remove anything.
 Three parts of that address matter, and getting any of them wrong fails in a
 way that doesn't look like an address problem:
 
-- **`:8443`** - the farm server also runs the harvest app, which holds the
-  default port. `https://<server-name>.<tailnet-name>.ts.net` without the port
-  opens the *harvest* app, not this one.
-- **`/app/`** - without it the server answers 404.
-- **`https`** - a plain `http://192.168.x.x:8001/app/` LAN address still lets
-  him log in, but iOS silently refuses to install it to the Home Screen, run
-  it offline, open the camera, or record a note's location. Everything that
-  makes this app worth carrying into the orchard needs the HTTPS address.
+- **`:9443`** - the farm server runs three apps and each has its own port.
+  `https://<server-name>.<tailnet-name>.ts.net` without a port opens *Boord*,
+  and `:8443` opens *Boord Owner*.
+- **`/app/`** - the app itself lives here. The address without it redirects
+  to it, so it is safe to leave off, but the installed Home Screen icon should
+  carry it.
+- **`https`** - there is no `http://` address any more; the server binds
+  loopback. Even if there were, iOS silently refuses to install a plain-HTTP
+  page to the Home Screen, run it offline, open the camera, or record a note's
+  location. Everything that makes this app worth carrying into the orchard
+  needs the HTTPS address.
 
-Both mappings are **tailnet only**, so a phone must be signed in to the
-Tailscale network to reach either. If the address ever changes, re-check it on
-the server with `tailscale serve status` - the line proxying to
-`http://localhost:8001` is this app.
+All three mappings are **tailnet only**, so a phone must be signed in to the
+Tailscale network to reach any of them. If the address ever changes, re-check
+it on the server with `tailscale serve status` - the line proxying to
+`http://localhost:8020` is this app.
 
 **Steps:**
 1. Open the address above in Safari on the iPhone.
 2. Log in as `andre` (or `devin`).
 3. Tap the **Share** icon (square with an arrow) → **"Add to Home Screen"**.
-4. From now on, always open **Bekfontein Farm Notebook** from the Home
-   Screen icon, not from a Safari bookmark or tab.
+4. From now on, always open **Notes** from the Home Screen icon, not from a
+   Safari bookmark or tab. Its icon is the Boord crate with a **sky-blue
+   leaf** - the same mark as Boord's other apps, whose leaves are green
+   (Field), red (Receiving), yellow (Admin) and white (Owner).
 
 ### Dictation
 
@@ -250,7 +322,7 @@ weak signal.
   he isn't starting from nothing).
 - **Photos** - tap **Add Photo** to attach one or more.
 
-Tap **Save to Notebook** - the entry is saved to the phone instantly and
+Tap **Save Note** - the entry is saved to the phone instantly and
 starts syncing to the server in the background (see
 [chapter 5](#5-how-offline-capture-works)).
 
@@ -278,7 +350,7 @@ for genuine mistakes, not routine cleanup).
 
 ## 5. How Offline Capture Works
 
-Every **Save to Notebook** writes the entry (and any attached photos)
+Every **Save Note** writes the entry (and any attached photos)
 straight into the phone's own local storage first - this always succeeds
 instantly, with or without a signal. A background sync process then:
 
@@ -337,7 +409,7 @@ rather than leaving unsynced entries sitting for days.
 
 A full backup (database + all photos) is taken **automatically every day at
 02:00**, keeping the **14 most recent** backups on the server - same
-mechanism as the harvest app. This only runs if the server is actually
+mechanism as Boord. This only runs if the server is actually
 running at 02:00; if the PC is off overnight, that night's backup is simply
 skipped.
 
@@ -361,11 +433,11 @@ current data (anything captured after the backup's timestamp is lost):
 
 1. First, copy the *current* `data\notebook.db` and `data\photos\` folder
    somewhere safe, in case the restore turns out to be the wrong call.
-2. Stop the server: `schtasks /end /tn "Bekfontein Farm Notebook Server"`.
+2. Stop the server: `schtasks /end /tn "Boord Notes Server"`.
 3. Unzip the backup - it contains `notebook.db` and a `photos\` folder.
 4. Copy those into `data\`, replacing the current files.
 5. Start the server again:
-   `schtasks /run /tn "Bekfontein Farm Notebook Server"`.
+   `schtasks /run /tn "Boord Notes Server"`.
 
 ---
 
@@ -389,7 +461,7 @@ what the app has: "Finding your location..." means it's still looking, and
 "No location available" means iOS refused or there's no fix. Check, in order:
 
 1. The app was opened from its Home Screen icon on the HTTPS address
-   (`https://<server-name>.<tailnet-name>.ts.net:8443/app/`). On a plain
+   (`https://<server-name>.<tailnet-name>.ts.net:9443/app/`). On a plain
    `http://` LAN address iOS blocks location outright and the app can only
    report that none arrived - the commonest cause, and it looks like a broken
    feature rather than a wrong address.
