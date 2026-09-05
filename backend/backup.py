@@ -1,7 +1,8 @@
 """Full data backup: zips the SQLite DB + photos, retains the most recent
 MAX_BACKUPS, and runs itself automatically once a day at 02:00 via a
 background daemon thread - no scheduling library needed for a single daily
-job. Backup files never include the app's source code (already in git),
+job. The nightly run is skipped if nothing has changed since the last
+backup. Backup files never include the app's source code (already in git),
 only the data that changes at runtime."""
 import os
 import threading
@@ -65,11 +66,31 @@ def _seconds_until_next_2am() -> float:
     return (target - now).total_seconds()
 
 
+def _last_backup_time() -> datetime | None:
+    names = _backup_filenames()
+    if not names:
+        return None
+    ts = names[-1][len("backup_"):-len(".zip")]
+    return datetime.strptime(ts, "%Y%m%d_%H%M%S")
+
+
+def _data_changed_since(when: datetime) -> bool:
+    if os.path.exists(DB_PATH) and datetime.fromtimestamp(os.path.getmtime(DB_PATH)) > when:
+        return True
+    for root, _, files in os.walk(PHOTOS_DIR):
+        for f in files:
+            if datetime.fromtimestamp(os.path.getmtime(os.path.join(root, f))) > when:
+                return True
+    return False
+
+
 def _scheduler_loop() -> None:
     while True:
         time.sleep(_seconds_until_next_2am())
         try:
-            create_backup()
+            last = _last_backup_time()
+            if last is None or _data_changed_since(last):
+                create_backup()
         except Exception:
             pass  # don't let one bad night kill the thread - try again tomorrow
 
