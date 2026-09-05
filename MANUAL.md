@@ -208,6 +208,35 @@ The file lives in `data\` rather than in the checkout on purpose: a
 fingerprint inside the repo would be rewritten by the very update it is
 supposed to be vouching for.
 
+### Clearing the old passwords (one time, on a server upgraded from v2.0)
+
+Up to v2.0 this app had two accounts, and `user.password_hash` held a bcrypt
+hash for each. v2.1 removed the sign-in, and nothing reads those columns any
+more - but the migration in `db.py` is strictly additive and never drops
+anything, so on a database that predates v2.1 the hashes are still sitting in
+the file. Remove them once:
+
+```bat
+schtasks /end /tn "Boord Notes Server"
+backend\.venv\Scripts\python.exe scripts\clear_legacy_password_hashes.py
+schtasks /run /tn "Boord Notes Server"
+```
+
+It drops the `password_hash` and `role` columns and VACUUMs, which is what
+actually discards the bytes - blanking the values would leave the originals in
+free pages until a later write happened to reuse them. It takes a copy of the
+database into `data\backups\` first, reports what it did, and is safe to
+re-run: a second run says there is nothing to do. The server has to be stopped
+because `ALTER TABLE` and `VACUUM` need an exclusive lock; the script refuses
+rather than waits if it cannot get one.
+
+A fresh v2.1 install never had those columns and does not need this.
+
+**This is one-way.** Checking out v2.0 afterwards gives you back the login
+screen with no usable passwords and no reset path short of editing the
+database by hand. Keep the backup it takes if rolling back is a live
+possibility.
+
 ### Tailscale HTTPS (required for the installable offline app)
 
 This app is reached over Tailscale and no other way. The server binds
