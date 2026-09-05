@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Rebuild the Notebook app's /tmp preview sandbox.
+# Rebuild the Boord Notes app's /tmp preview sandbox.
 #
 # The app itself runs fine in place (backend/.venv, `python run_preview.py`).
 # This script exists only for Claude Code's preview runner, which is
@@ -7,7 +7,7 @@
 # read backend/.venv/pyvenv.cfg, so it cannot start the app where it lives:
 #
 #   PermissionError: [Errno 1] Operation not permitted:
-#   '.../Bekfontein Farm Notebook/backend/.venv/pyvenv.cfg'
+#   '.../BoordNotes/backend/.venv/pyvenv.cfg'
 #
 # So everything the preview touches is mirrored into /tmp. Same approach the
 # two harvest apps use (see their .claude/rebuild_preview.sh).
