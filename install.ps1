@@ -291,7 +291,11 @@ cd /d "$BackendDir"
     Write-Host ""
     Write-Host " $TailscaleHttpsPort, because this machine runs all three apps and each needs its" -ForegroundColor Yellow
     Write-Host " own port. Boord takes 443 (its Field QR scanner has to be what the" -ForegroundColor Yellow
-    Write-Host " bare address reaches), Boord Owner takes 8443, this app takes $TailscaleHttpsPort:" -ForegroundColor Yellow
+    # ${...} is required, not stylistic: PowerShell reads "$Name:" inside a
+    # double-quoted string as a drive-qualified reference (the way $env:PATH
+    # works), so a variable followed by a colon is a parse error that kills
+    # the whole script before line 1 runs.
+    Write-Host " bare address reaches), Boord Owner takes 8443, this app takes ${TailscaleHttpsPort}:" -ForegroundColor Yellow
     Write-Host "" -ForegroundColor Yellow
     Write-Host "   tailscale serve reset" -ForegroundColor Yellow
     Write-Host "   tailscale serve --bg --https=443  http://localhost:8000" -ForegroundColor Yellow
