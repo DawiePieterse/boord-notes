@@ -79,9 +79,9 @@ what to watch for.
 
 ## 2. Initial Server Setup
 
-This app runs as an **independent process on the same PC** as Boord and
-Boord Owner. It shares no port, database, or Scheduled Task with either -
-all three can be stopped, started, and updated independently.
+This app runs as an **independent process on the same PC** as Boord, Boord
+Owner and Kudde. It shares no port, database, or Scheduled Task with any of
+them - each can be stopped, started, and updated independently.
 
 ### Prerequisites
 
@@ -149,7 +149,7 @@ fingerprint exists, and the old checkout has neither the fingerprint nor
 3. **Write the release key fingerprint** into `data\release_key.fpr` - see
    [Pulling future updates](#pulling-future-updates) for the exact command.
 
-4. **Re-point Tailscale**, with all three mappings together - see
+4. **Re-point Tailscale**, with every mapping set together - see
    [Tailscale HTTPS](#tailscale-https-required-for-the-installable-offline-app).
    This is also what repairs Boord Owner, which has been fighting this app
    for `:8443`.
@@ -164,7 +164,7 @@ update is a single double-click again.
 
 ### Stopping, starting, and restarting the server
 
-Same mechanism as the other two apps, just a different task name:
+Same mechanism as the other apps on this PC, just a different task name:
 
 ```powershell
 schtasks /end /tn "Boord Notes Server"
@@ -254,21 +254,31 @@ for someone walking the farm without signal.
 
 Needs **HTTPS Certificates** enabled for the tailnet (admin console → DNS).
 
-**All three mappings, in one place.** `:443` is one slot per machine and this
-PC runs three apps, so each needs its own port. Set all three together rather
-than adding one - that is the only way to be sure of what the machine ends up
-with:
+**All four mappings, in one place.** `:443` is one slot per machine and this
+PC runs up to four apps, so each needs its own port. Set them all together
+rather than adding one - that is the only way to be sure of what the machine
+ends up with:
 
 ```bat
 tailscale serve reset
 tailscale serve --bg --https=443  http://localhost:8000
 tailscale serve --bg --https=8443 http://localhost:8010
 tailscale serve --bg --https=9443 http://localhost:8020
+tailscale serve --bg --https=8030 http://localhost:8030
 ```
 
 Boord takes 443 because its Field QR scanner has to be what the bare address
-reaches. Boord Owner takes 8443. This app takes 9443. `tailscale serve status`
-should then list all three:
+reaches. Boord Owner takes 8443. This app takes 9443. Kudde takes 8030, which
+happens to match its app port - that is a convenience, not a requirement.
+
+> **`tailscale serve reset` clears every mapping on the machine, including
+> ones this file does not mention.** Run the whole block and drop only the
+> lines for apps this PC genuinely does not have. This block listed three
+> apps until 2026-09-09, so a machine set up from the older version of it -
+> or from Boord's or Boord Owner's shorter copy - has had Kudde silently
+> unpublished, with the `{"detail":"Not Found"}` symptom described below.
+
+`tailscale serve status` should then list every app this PC actually runs:
 
 ```
 $ tailscale serve status
@@ -280,6 +290,9 @@ https://<server-name>.<tailnet-name>.ts.net:8443 (tailnet only)
 
 https://<server-name>.<tailnet-name>.ts.net:9443 (tailnet only)
 |-- / proxy http://localhost:8020          <- this app
+
+https://<server-name>.<tailnet-name>.ts.net:8030 (tailnet only)
+|-- / proxy http://localhost:8030          <- Kudde
 ```
 
 which makes this app's address
@@ -329,9 +342,9 @@ Dashboard. There is no sign-in, and no separate address for either of them.
 Three parts of that address matter, and getting any of them wrong fails in a
 way that doesn't look like an address problem:
 
-- **`:9443`** - the farm server runs three apps and each has its own port.
+- **`:9443`** - the farm server runs several apps and each has its own port.
   `https://<server-name>.<tailnet-name>.ts.net` without a port opens *Boord*,
-  and `:8443` opens *Boord Owner*.
+  `:8443` opens *Boord Owner*, and `:8030` opens *Kudde*.
 - **`/app/`** - the app itself lives here. The address without it redirects
   to it, so it is safe to leave off, but the installed Home Screen icon should
   carry it.
