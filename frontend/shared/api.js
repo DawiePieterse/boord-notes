@@ -10,7 +10,7 @@ const NB = {
   // it's obvious at a glance whether a device's cached copy is actually up
   // to date - the service worker revalidates in the background, so a device
   // picks up new code on its second load (see frontend/app/service-worker.js).
-  VERSION: "2.2",
+  VERSION: "2.3",
 
   // Left behind by the versions that had accounts. Cleared once on load so a
   // phone that used to sign in is not carrying a stale token and role around
