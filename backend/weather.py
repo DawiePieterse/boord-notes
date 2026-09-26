@@ -9,7 +9,6 @@ it there too.
 import json as _json
 import threading
 import time as _time
-import urllib.error
 import urllib.request
 
 _WMO_CONDITION = {

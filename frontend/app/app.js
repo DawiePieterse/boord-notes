@@ -466,7 +466,7 @@ async function loadDashboard() {
     stats = await NB.api("/api/entries/stats");
     noteServerReached();
   } catch (e) {
-    if (handleApiError(e) === "auth") return;
+    handleApiError(e);
     offline = true;
   }
 
@@ -661,7 +661,7 @@ async function showEntryDetail(id) {
   try {
     entry = await NB.api(`/api/entries/${id}`);
   } catch (e) {
-    if (handleApiError(e) === "auth") return;
+    handleApiError(e);
     // The server hasn't got this one yet (or can't be reached), but if it was
     // captured on this device we can still show it. Opening an entry you can
     // see listed must never dead-end on "check connection".
@@ -738,7 +738,7 @@ async function archiveCurrentEntry() {
   try {
     await NB.api(`/api/entries/${entryId}`, { method: "DELETE" });
   } catch (e) {
-    if (handleApiError(e) === "auth") return;
+    handleApiError(e);
     NB.toast("Could not archive - check connection");
     return;
   }
@@ -773,7 +773,7 @@ async function loadBackups() {
   try {
     backups = await NB.api("/api/backups");
   } catch (e) {
-    if (handleApiError(e) === "auth") return;
+    handleApiError(e);
     document.getElementById("backupsList").innerHTML = `<div class="text-slate-400">Could not load - check connection</div>`;
     return;
   }
