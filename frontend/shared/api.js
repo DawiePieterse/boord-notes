@@ -10,7 +10,7 @@ const NB = {
   // it's obvious at a glance whether a device's cached copy is actually up
   // to date - the service worker revalidates in the background, so a device
   // picks up new code on its second load (see frontend/app/service-worker.js).
-  VERSION: "2.3",
+  VERSION: "2.4",
 
   // Left behind by the versions that had accounts. Cleared once on load so a
   // phone that used to sign in is not carrying a stale token and role around
@@ -26,6 +26,20 @@ const NB = {
   // fetch() rejects with a TypeError for those.
   isNetworkError(e) {
     return e instanceof TypeError || (!!e && (e.name === "AbortError" || e.name === "TimeoutError"));
+  },
+
+  // navigator.onLine only reports whether the phone has a radio connection, not
+  // whether the farm server can actually be reached - and out in the orchard
+  // "WiFi shows connected but nothing answers" is the normal case, not the
+  // exception. api() remembers the last request that never got an answer (and
+  // forgets it on any answer at all, an error status included), so the capture
+  // screen can skip a lookup that is only going to time out and saving a note
+  // stays instant.
+  _lastNetFailAt: 0,
+  OFFLINE_MEMORY_MS: 30000,
+
+  serverLikelyReachable() {
+    return navigator.onLine && (Date.now() - NB._lastNetFailAt) > NB.OFFLINE_MEMORY_MS;
   },
 
   // timeoutMs is opt-in, and deliberately so. Photo sync pushes multi-megabyte
@@ -49,9 +63,13 @@ const NB = {
       res = await fetch(`${API_BASE}${path}`, {
         method, headers, body: payload, signal: controller ? controller.signal : undefined,
       });
+    } catch (e) {
+      if (NB.isNetworkError(e)) NB._lastNetFailAt = Date.now();
+      throw e;
     } finally {
       if (timer) clearTimeout(timer);
     }
+    NB._lastNetFailAt = 0;
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       const err = new Error(`${res.status} ${text}`);
@@ -61,6 +79,47 @@ const NB = {
     const contentType = res.headers.get("content-type") || "";
     if (contentType.includes("application/json")) return res.json();
     return res.blob();
+  },
+
+  // The server records every timestamp in UTC (datetime.utcnow()), but SQLite
+  // hands them back without a timezone marker, so they reach the browser
+  // looking like "2026-09-20T08:00:00". JavaScript reads a bare date-time
+  // string as LOCAL time, which printed UTC digits as if they were farm time
+  // (two hours early in SAST). parseServerDate pins a naive string to UTC
+  // first; the fmt* helpers then render it in the device's own timezone. A
+  // note still only on this device carries a "...Z" string from
+  // toISOString(), which passes through unchanged. Always format server
+  // timestamps through these - never new Date(x) directly. The same helpers
+  // as Boord's frontend/shared/api.js.
+  parseServerDate(value) {
+    if (value === null || value === undefined || value === "") return null;
+    if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+    let s = String(value).trim();
+    // A bare "YYYY-MM-DD" is a calendar date, not an instant, so it is left
+    // as-is; only strings carrying a time-of-day need the UTC marker.
+    if (/\d{1,2}:\d{2}/.test(s)) {
+      s = s.replace(" ", "T");
+      if (!/(Z|[+-]\d{2}:?\d{2})$/.test(s)) s += "Z";
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  },
+
+  fmtDateTime(value, fallback = "") {
+    const d = NB.parseServerDate(value);
+    return d ? d.toLocaleString() : fallback;
+  },
+
+  fmtDate(value, fallback = "") {
+    const d = NB.parseServerDate(value);
+    return d ? d.toLocaleDateString() : fallback;
+  },
+
+  // Milliseconds since the epoch, for sorting and comparing server and local
+  // timestamps together; 0 for a missing or unreadable one.
+  serverTimeMs(value) {
+    const d = NB.parseServerDate(value);
+    return d ? d.getTime() : 0;
   },
 
   // Maps backend/weather.py's fixed condition strings to a Font Awesome icon
