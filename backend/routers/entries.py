@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import uuid as uuid_lib
 from datetime import datetime, timedelta
 from typing import List, Optional
@@ -58,48 +59,74 @@ def _get_or_create_tags(session: Session, names: List[str]) -> List[Tag]:
     return tags
 
 
-def _entry_out(session: Session, entry: Entry) -> dict:
-    tag_names = session.exec(
-        select(Tag.name).join(EntryTagLink, EntryTagLink.tag_id == Tag.id)
-        .where(EntryTagLink.entry_id == entry.id)
-    ).all()
-    photos = session.exec(select(Photo).where(Photo.entry_id == entry.id)).all()
+def _tag_names_by_entry(session: Session, entry_ids: list) -> dict:
+    """{entry_id: [tag name, ...]} for many entries in one query."""
+    names: dict = {}
+    if entry_ids:
+        for entry_id, name in session.exec(
+            select(EntryTagLink.entry_id, Tag.name).join(Tag, EntryTagLink.tag_id == Tag.id)
+            .where(EntryTagLink.entry_id.in_(entry_ids))
+        ).all():
+            names.setdefault(entry_id, []).append(name)
+    return names
+
+
+def _entries_out(session: Session, entries: list) -> list[dict]:
+    """API shape for many entries: tags, photos and authors fetched with one
+    query each rather than three per entry."""
+    ids = [e.id for e in entries]
+    tag_names = _tag_names_by_entry(session, ids)
+    photos: dict = {}
+    if ids:
+        for p in session.exec(select(Photo).where(Photo.entry_id.in_(ids))).all():
+            photos.setdefault(p.entry_id, []).append(p)
     # Entries captured before the sign-in was removed carry an author; ones
     # captured since do not, and the UI omits the field rather than inventing
     # a name for them. See models.User.
-    creator = session.get(User, entry.created_by_id) if entry.created_by_id else None
-    return {
-        "id": entry.id,
-        "title": entry.title,
-        "body": entry.body,
-        "block": entry.block,
-        "tags": sorted(tag_names),
-        "created_at": entry.created_at,
-        "updated_at": entry.updated_at,
-        "created_by": creator.display_name if creator else "",
-        "archived": entry.archived,
-        "latitude": entry.latitude,
-        "longitude": entry.longitude,
-        "location_accuracy_m": entry.location_accuracy_m,
-        "weather_temp": entry.weather_temp,
-        "weather_humidity": entry.weather_humidity,
-        "weather_condition": entry.weather_condition,
-        "photos": [{"id": p.id, "filename": p.filename, "caption": p.caption} for p in photos],
-    }
+    creator_ids = {e.created_by_id for e in entries if e.created_by_id}
+    creators = ({u.id: u for u in session.exec(select(User).where(User.id.in_(creator_ids))).all()}
+                if creator_ids else {})
+    out = []
+    for entry in entries:
+        creator = creators.get(entry.created_by_id)
+        out.append({
+            "id": entry.id,
+            "title": entry.title,
+            "body": entry.body,
+            "block": entry.block,
+            "tags": sorted(tag_names.get(entry.id, [])),
+            "created_at": entry.created_at,
+            "updated_at": entry.updated_at,
+            "created_by": creator.display_name if creator else "",
+            "archived": entry.archived,
+            "latitude": entry.latitude,
+            "longitude": entry.longitude,
+            "location_accuracy_m": entry.location_accuracy_m,
+            "weather_temp": entry.weather_temp,
+            "weather_humidity": entry.weather_humidity,
+            "weather_condition": entry.weather_condition,
+            "photos": [{"id": p.id, "filename": p.filename, "caption": p.caption}
+                       for p in photos.get(entry.id, [])],
+        })
+    return out
+
+
+def _entry_out(session: Session, entry: Entry) -> dict:
+    return _entries_out(session, [entry])[0]
 
 
 @router.get("")
 def list_entries(q: str = "", tag: str = "", archived: bool = False,
                   session: Session = Depends(get_session)):
     entries = session.exec(select(Entry).where(Entry.archived == archived)).all()
-    results = [_entry_out(session, e) for e in entries]
     # Filtered in Python, not SQL LIKE - SQLite's default LIKE collation is
     # ASCII-only case-insensitive and mishandles Afrikaans diacritics (ë, é)
     # that dictated notes will contain. Fine at this data scale.
     if q:
         needle = q.lower()
-        results = [r for r in results if needle in r["title"].lower() or needle in r["body"].lower()
-                   or needle in r["block"].lower()]
+        entries = [e for e in entries if needle in e.title.lower() or needle in e.body.lower()
+                   or needle in e.block.lower()]
+    results = _entries_out(session, entries)
     if tag:
         results = [r for r in results if tag in r["tags"]]
     results.sort(key=lambda r: r["created_at"], reverse=True)
@@ -111,12 +138,10 @@ def entry_stats(session: Session = Depends(get_session)):
     entries = session.exec(select(Entry).where(Entry.archived == False)).all()  # noqa: E712
     week_ago = datetime.utcnow() - timedelta(days=7)
     with_photos_ids = set(session.exec(select(Photo.entry_id)).all())
+    tag_names = _tag_names_by_entry(session, [e.id for e in entries])
     tag_counts: dict = {}
     for e in entries:
-        for name in session.exec(
-            select(Tag.name).join(EntryTagLink, EntryTagLink.tag_id == Tag.id)
-            .where(EntryTagLink.entry_id == e.id)
-        ).all():
+        for name in tag_names.get(e.id, []):
             tag_counts[name] = tag_counts.get(name, 0) + 1
     recent = sorted(entries, key=lambda e: e.created_at, reverse=True)[:5]
     return {
@@ -125,7 +150,7 @@ def entry_stats(session: Session = Depends(get_session)):
         "with_photos": sum(1 for e in entries if e.id in with_photos_ids),
         "tags_used": len(tag_counts),
         "tag_breakdown": sorted(tag_counts.items(), key=lambda kv: kv[1], reverse=True),
-        "recent": [_entry_out(session, e) for e in recent],
+        "recent": _entries_out(session, recent),
     }
 
 
@@ -187,8 +212,8 @@ def archive_entry(entry_id: str, session: Session = Depends(get_session)):
 
 
 @router.post("/{entry_id}/photos")
-async def upload_photo(entry_id: str, file: UploadFile, caption: str = "",
-                        session: Session = Depends(get_session)):
+def upload_photo(entry_id: str, file: UploadFile, caption: str = "",
+                  session: Session = Depends(get_session)):
     _validate_entry_id(entry_id)
     entry = session.get(Entry, entry_id)
     if not entry:
@@ -198,7 +223,7 @@ async def upload_photo(entry_id: str, file: UploadFile, caption: str = "",
         raise HTTPException(400, "Unsupported image type")
     filename = f"{entry_id}-{uuid_lib.uuid4().hex[:8]}{ext}"
     with open(os.path.join(PHOTOS_DIR, filename), "wb") as f:
-        f.write(await file.read())
+        shutil.copyfileobj(file.file, f)
     photo = Photo(entry_id=entry_id, filename=filename, uploaded_at=datetime.utcnow(), caption=caption)
     session.add(photo)
     session.commit()

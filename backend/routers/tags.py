@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from db import get_session
 from models import Entry, EntryTagLink, Tag
@@ -15,19 +15,26 @@ def _live_use_count(session: Session, tag_id: int) -> int:
     made a tag advertise results it would never return. It also kept
     archived-only tags off the Dashboard's "Unused tags" card, so a tag left
     behind by an archived note could never be tidied away."""
-    return len(session.exec(
-        select(EntryTagLink)
+    return session.exec(
+        select(func.count())
+        .select_from(EntryTagLink)
         .join(Entry, Entry.id == EntryTagLink.entry_id)
         .where(EntryTagLink.tag_id == tag_id, Entry.archived == False)  # noqa: E712
-    ).all())
+    ).one()
 
 
 @router.get("")
 def list_tags(session: Session = Depends(get_session)):
     """All known tags with how many (non-archived) entries use each - for
     autocomplete while typing and the filter chip list."""
+    counts = dict(session.exec(
+        select(EntryTagLink.tag_id, func.count())
+        .join(Entry, Entry.id == EntryTagLink.entry_id)
+        .where(Entry.archived == False)  # noqa: E712
+        .group_by(EntryTagLink.tag_id)
+    ).all())
     tags = session.exec(select(Tag)).all()
-    result = [{"name": t.name, "count": _live_use_count(session, t.id)} for t in tags]
+    result = [{"name": t.name, "count": counts.get(t.id, 0)} for t in tags]
     result.sort(key=lambda r: r["name"].lower())
     return result
 

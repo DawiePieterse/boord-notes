@@ -14,24 +14,13 @@ const esc = (v) => NB.escapeHtml(v);
 // Anything captured on this device is safe in IndexedDB and will sync when the
 // server is reachable again, so a failed request must never be reported as
 // data loss.
+// NB.api() itself remembers an unreachable server (see
+// NB.serverLikelyReachable), so this only classifies the failure.
 function handleApiError(e) {
-  if (NB.isNetworkError(e)) { _lastNetFailAt = Date.now(); return "offline"; }
-  return "error";
+  return NB.isNetworkError(e) ? "offline" : "error";
 }
 
-// navigator.onLine only reports whether the phone has a radio connection, not
-// whether the farm server can actually be reached - and out in the orchard
-// "WiFi shows connected but nothing answers" is the normal case, not the
-// exception. Remembering the last failure lets the capture screen skip a
-// lookup that is only going to time out, so saving a note stays instant.
-let _lastNetFailAt = 0;
-const OFFLINE_MEMORY_MS = 30000;
-
-function serverLikelyReachable() {
-  return navigator.onLine && (Date.now() - _lastNetFailAt) > OFFLINE_MEMORY_MS;
-}
-
-function noteServerReached() { _lastNetFailAt = 0; }
+const serverLikelyReachable = NB.serverLikelyReachable;
 
 function showApp() {
   document.getElementById("appVersion").textContent = `v${NB.VERSION}`;
@@ -254,9 +243,7 @@ function freshFix() {
 async function fetchWeatherFor(fix) {
   if (!fix || !serverLikelyReachable()) return {};
   try {
-    const weather = await NB.api(`/api/weather/current?lat=${fix.lat}&lon=${fix.lon}`) || {};
-    noteServerReached();
-    return weather;
+    return await NB.api(`/api/weather/current?lat=${fix.lat}&lon=${fix.lon}`) || {};
   } catch (e) {
     handleApiError(e);
     return {};
@@ -392,10 +379,8 @@ async function syncLoop() {
       try {
         await NB.api("/api/entries", { method: "POST", body: entry });
         await IDB.markEntrySynced(entry.id);
-        noteServerReached();
         pushedSomething = true;
       } catch (e) {
-        if (NB.isNetworkError(e)) _lastNetFailAt = Date.now();
         /* leave unsynced, retry next tick */
       }
     }
@@ -464,9 +449,8 @@ async function loadDashboard() {
   let offline = false;
   try {
     stats = await NB.api("/api/entries/stats");
-    noteServerReached();
   } catch (e) {
-    if (handleApiError(e) === "auth") return;
+    handleApiError(e);
     offline = true;
   }
 
@@ -512,12 +496,12 @@ function mergeStatsWithLocal(stats, localEntries) {
 
   return {
     total: base.total + extra.length,
-    this_week: base.this_week + extra.filter((e) => new Date(e.created_at).getTime() >= weekAgo).length,
+    this_week: base.this_week + extra.filter((e) => NB.serverTimeMs(e.created_at) >= weekAgo).length,
     with_photos: base.with_photos,
     tags_used: tagCounts.size,
     tag_breakdown: [...tagCounts.entries()].sort((a, b) => b[1] - a[1]),
     recent: [...extra, ...(base.recent || [])]
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .sort((a, b) => NB.serverTimeMs(b.created_at) - NB.serverTimeMs(a.created_at))
       .slice(0, 5),
   };
 }
@@ -559,7 +543,7 @@ function entryCardHtml(e) {
       ${photoThumb}
       <div class="flex-1 min-w-0">
         <div class="font-semibold text-sm truncate">${esc(e.title) || "(untitled)"}</div>
-        <div class="text-xs text-slate-500">${e.block ? esc(e.block) + " · " : ""}${new Date(e.created_at).toLocaleDateString()}</div>
+        <div class="text-xs text-slate-500">${e.block ? esc(e.block) + " · " : ""}${NB.fmtDate(e.created_at)}</div>
         <div class="mt-1 flex flex-wrap gap-1">${tags}</div>
       </div>
     </button>`;
@@ -611,7 +595,6 @@ async function loadEntries() {
     if (q) qs.set("q", q);
     if (tag) qs.set("tag", tag);
     entries = await NB.api(`/api/entries?${qs.toString()}`);
-    noteServerReached();
   } catch (e) {
     handleApiError(e);
     offline = true;
@@ -644,7 +627,7 @@ async function loadEntries() {
   for (const entry of local) {
     if (!serverIds.has(entry.id) && matchesFilters(entry, q, tag)) entries.push(entry);
   }
-  entries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  entries.sort((a, b) => NB.serverTimeMs(b.created_at) - NB.serverTimeMs(a.created_at));
 
   document.getElementById("entriesList").innerHTML = entries.map(entryCardHtml).join("");
   document.getElementById("entriesEmpty").classList.toggle("hidden", entries.length > 0);
@@ -661,7 +644,7 @@ async function showEntryDetail(id) {
   try {
     entry = await NB.api(`/api/entries/${id}`);
   } catch (e) {
-    if (handleApiError(e) === "auth") return;
+    handleApiError(e);
     // The server hasn't got this one yet (or can't be reached), but if it was
     // captured on this device we can still show it. Opening an entry you can
     // see listed must never dead-end on "check connection".
@@ -674,7 +657,7 @@ async function showEntryDetail(id) {
   currentDetailEntry = entry;
   document.getElementById("detailTitle").textContent = entry.title || "(untitled)";
   document.getElementById("detailMeta").textContent =
-    `${new Date(entry.created_at).toLocaleString()}${entry.created_by ? " · " + entry.created_by : ""}`;
+    `${NB.fmtDateTime(entry.created_at)}${entry.created_by ? " · " + entry.created_by : ""}`;
   document.getElementById("detailBlock").textContent = entry.block ? `📍 ${entry.block}` : "";
   renderDetailContext(entry);
   document.getElementById("detailTags").innerHTML = entry.tags.map((t) => `<span class="tag-chip">${esc(t)}</span>`).join("");
@@ -738,7 +721,7 @@ async function archiveCurrentEntry() {
   try {
     await NB.api(`/api/entries/${entryId}`, { method: "DELETE" });
   } catch (e) {
-    if (handleApiError(e) === "auth") return;
+    handleApiError(e);
     NB.toast("Could not archive - check connection");
     return;
   }
@@ -773,10 +756,14 @@ async function loadBackups() {
   try {
     backups = await NB.api("/api/backups");
   } catch (e) {
-    if (handleApiError(e) === "auth") return;
+    handleApiError(e);
     document.getElementById("backupsList").innerHTML = `<div class="text-slate-400">Could not load - check connection</div>`;
     return;
   }
+  // Not NB.fmtDateTime: a backup's created_at is the zip file's mtime in the
+  // farm PC's LOCAL time (backend/backup.py), not a UTC database timestamp,
+  // so pinning it to UTC would push it two hours late. The PC and the phones
+  // share the farm's timezone, so reading it as local is right.
   document.getElementById("backupsList").innerHTML = backups.map((b) => `
     <div class="flex justify-between items-center border-t border-slate-100 pt-2">
       <div>
