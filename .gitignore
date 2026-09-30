@@ -23,3 +23,6 @@ start_server.bat
 # supposed to vouch for. See update_server.bat.
 data/release_key.fpr
 data/installed_version.txt
+
+# The Claude API key for the AI buttons (or set ANTHROPIC_API_KEY instead).
+data/anthropic_key.txt

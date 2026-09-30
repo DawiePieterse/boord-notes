@@ -25,6 +25,7 @@ const serverLikelyReachable = NB.serverLikelyReachable;
 function showApp() {
   document.getElementById("appVersion").textContent = `v${NB.VERSION}`;
   loadTagSuggestions();
+  loadAiStatus();
   updateUnsyncedBadge();
   // Capture, not Dashboard: the app is opened to write a note down before it
   // is forgotten, so the textarea and the GPS warm-up should already be there.
@@ -280,6 +281,8 @@ function resetCaptureForm() {
   currentTags = [];
   pendingPhotos = [];
   existingPhotos = [];
+  hideTidyResult();
+  document.getElementById("tidyHint").textContent = "";
   editingEntryId = null;
   editingCreatedAt = null;
   document.getElementById("captureFormTitle").textContent = "New Entry";
@@ -736,6 +739,131 @@ async function archiveCurrentEntry() {
 }
 
 // ---------------------------------------------------------------------
+// AI help (optional): Tidy up a dictated note, Ask the saved notes.
+// Both need the server AND its internet connection, so unlike capture they
+// simply say so when they can't run. Neither ever saves anything by itself.
+// ---------------------------------------------------------------------
+let aiEnabled = false;
+let tidySuggestion = null;   // {title, body, suggested_tags} awaiting Use this / Keep mine
+
+async function loadAiStatus() {
+  try {
+    const status = await NB.api("/api/ai/status");
+    aiEnabled = !!(status && status.enabled);
+  } catch (e) { handleApiError(e); return; }  // offline - leave the buttons as they were
+  document.getElementById("tidyWrap").classList.toggle("hidden", !aiEnabled);
+  document.getElementById("tabAsk").classList.toggle("hidden", !aiEnabled);
+}
+
+// A 503 from /api/ai/* carries a sentence written for Andre; anything else is
+// a network fault or a bug and gets a generic line.
+function aiErrorMessage(e) {
+  if (NB.isNetworkError(e)) return "Can't reach the server right now - try again when you have signal.";
+  if (e && e.status && e.message) {
+    const text = e.message.replace(/^\d+\s*/, "");
+    try { const d = JSON.parse(text).detail; if (typeof d === "string") return d; } catch (_) {}
+  }
+  return "AI help isn't working right now. Your notes are safe.";
+}
+
+const AI_TIMEOUT_MS = 120000;
+
+function hideTidyResult() {
+  tidySuggestion = null;
+  document.getElementById("tidyResult").classList.add("hidden");
+}
+
+async function runTidy() {
+  const body = document.getElementById("entryBody").value.trim();
+  const hint = document.getElementById("tidyHint");
+  if (!body) { NB.toast("Write or dictate some notes first"); return; }
+  if (!serverLikelyReachable()) { hint.textContent = "Needs a connection - try again later."; return; }
+  const btn = document.getElementById("tidyBtn");
+  btn.disabled = true;
+  btn.textContent = "Tidying...";
+  hint.textContent = "";
+  hideTidyResult();
+  let suggestion;
+  try {
+    suggestion = await NB.api("/api/ai/tidy", {
+      method: "POST", timeoutMs: AI_TIMEOUT_MS,
+      body: {
+        title: document.getElementById("entryTitle").value.trim(),
+        body,
+        block: document.getElementById("entryBlock").value.trim(),
+        tags: currentTags,
+      },
+    });
+  } catch (e) {
+    hint.textContent = aiErrorMessage(e);
+    return;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Tidy up";
+  }
+  tidySuggestion = suggestion;
+  document.getElementById("tidyTitle").textContent = suggestion.title;
+  document.getElementById("tidyBody").textContent = suggestion.body;
+  const tags = suggestion.suggested_tags;
+  document.getElementById("tidyTagsWrap").classList.toggle("hidden", !tags.length);
+  document.getElementById("tidyTags").innerHTML = tags.map((t) =>
+    `<button type="button" class="tag-chip suggested-tag" data-name="${esc(t.name)}">+ ${esc(t.name)}${t.is_new ? " (new)" : ""}</button>`
+  ).join("");
+  document.querySelectorAll("#tidyTags .suggested-tag").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      if (!currentTags.includes(chip.dataset.name)) currentTags.push(chip.dataset.name);
+      renderTagChips();
+      chip.remove();
+    });
+  });
+  document.getElementById("tidyResult").classList.remove("hidden");
+}
+
+function acceptTidy() {
+  if (!tidySuggestion) return;
+  document.getElementById("entryTitle").value = tidySuggestion.title;
+  document.getElementById("entryBody").value = tidySuggestion.body;
+  hideTidyResult();
+}
+
+async function runAsk() {
+  const question = document.getElementById("askInput").value.trim();
+  if (!question) { NB.toast("Type a question first"); return; }
+  if (!serverLikelyReachable()) {
+    showAskResult("Asking needs a connection to the server - try again when you have signal.", [], "");
+    return;
+  }
+  const btn = document.getElementById("askBtn");
+  btn.disabled = true;
+  btn.textContent = "Looking through the notes...";
+  try {
+    const r = await NB.api("/api/ai/ask", { method: "POST", body: { question }, timeoutMs: AI_TIMEOUT_MS });
+    const foot = r.notes_considered < r.notes_total
+      ? `Searched the ${r.notes_considered} most relevant of ${r.notes_total} notes.`
+      : `Searched all ${r.notes_total} notes.`;
+    showAskResult(r.answer, r.sources, foot);
+  } catch (e) {
+    showAskResult(aiErrorMessage(e), [], "");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Ask";
+  }
+}
+
+function showAskResult(answer, sources, foot) {
+  document.getElementById("askAnswer").textContent = answer;
+  document.getElementById("askSourcesWrap").classList.toggle("hidden", !sources.length);
+  document.getElementById("askSources").innerHTML = sources.map((s) => `
+    <button data-id="${esc(s.id)}" class="entry-card w-full text-left bg-slate-50 rounded-lg p-2 text-sm">
+      <span class="font-semibold">${esc(s.title) || "(untitled)"}</span>
+      <span class="text-xs text-slate-500"> · ${NB.fmtDate(s.created_at)}</span>
+    </button>`).join("");
+  bindEntryCards("#askSources");
+  document.getElementById("askFoot").textContent = foot;
+  document.getElementById("askResult").classList.remove("hidden");
+}
+
+// ---------------------------------------------------------------------
 // Backups
 // ---------------------------------------------------------------------
 function formatBytes(bytes) {
@@ -854,6 +982,10 @@ function init() {
     renderCaptureContext();
   });
   document.getElementById("saveEntryBtn").addEventListener("click", saveEntry);
+  document.getElementById("tidyBtn").addEventListener("click", runTidy);
+  document.getElementById("tidyAcceptBtn").addEventListener("click", acceptTidy);
+  document.getElementById("tidyDismissBtn").addEventListener("click", hideTidyResult);
+  document.getElementById("askBtn").addEventListener("click", runAsk);
   document.getElementById("cancelEditBtn").addEventListener("click", resetCaptureForm);
 
   document.getElementById("searchInput").addEventListener("keyup", loadEntries);

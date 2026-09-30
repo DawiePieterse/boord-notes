@@ -40,6 +40,7 @@
     <button class="tab-btn active" data-tab="capture" id="tabCapture">Capture</button>
     <button class="tab-btn" data-tab="dashboard">Dashboard</button>
     <button class="tab-btn" data-tab="entries">Entries</button>
+    <button class="tab-btn hidden" data-tab="ask" id="tabAsk">Ask</button>
     <button class="tab-btn" data-tab="settings">Settings</button>
   </div>
 
@@ -71,6 +72,29 @@
         <div>
           <label class="text-xs font-medium text-slate-500 block mb-1">Notes - tap the microphone key on your keyboard to dictate</label>
           <textarea id="entryBody" rows="6" class="w-full border border-slate-300 rounded-lg p-3 text-base" placeholder="Speak or type here..."></textarea>
+          <!-- AI tidy-up: only shown when the server has a key, and it only
+               ever proposes - nothing changes until Andre taps Use this. -->
+          <div id="tidyWrap" class="hidden mt-2">
+            <button type="button" id="tidyBtn" class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium">
+              Tidy up
+            </button>
+            <span id="tidyHint" class="text-[11px] text-slate-400 ml-2"></span>
+            <div id="tidyResult" class="hidden mt-3 border border-slate-200 rounded-xl p-3 space-y-2 bg-slate-50">
+              <div class="text-xs font-medium text-slate-500">Suggested title</div>
+              <div id="tidyTitle" class="font-semibold"></div>
+              <div class="text-xs font-medium text-slate-500">Suggested notes</div>
+              <div id="tidyBody" class="text-sm whitespace-pre-wrap"></div>
+              <div id="tidyTagsWrap" class="hidden">
+                <div class="text-xs font-medium text-slate-500 mb-1">Suggested tags (tap to add)</div>
+                <div id="tidyTags" class="flex flex-wrap gap-1.5"></div>
+              </div>
+              <div class="flex gap-2 pt-1">
+                <button type="button" id="tidyDismissBtn" class="flex-1 rounded-lg py-2 bg-white border border-slate-200 text-sm">Keep mine</button>
+                <button type="button" id="tidyAcceptBtn" class="flex-1 boord-btn-primary rounded-lg py-2 text-sm font-bold">Use this</button>
+              </div>
+              <p class="text-[11px] text-slate-400">Read it through - it can still get a word wrong. Your original is kept until you tap Use this.</p>
+            </div>
+          </div>
         </div>
 
         <div>
@@ -155,6 +179,24 @@
       </div>
       <div id="entriesList" class="space-y-2"></div>
       <div id="entriesEmpty" class="hidden text-center text-slate-400 py-10">No entries yet.</div>
+    </div>
+
+    <!-- ASK -->
+    <div id="page-ask" class="page hidden space-y-4">
+      <div class="bg-white rounded-2xl shadow p-4 space-y-3">
+        <div class="text-lg font-bold">Ask the notes</div>
+        <p class="text-xs text-slate-500">Ask in English or Afrikaans. Answers come only from the notes that have been saved to the server, with the notes they used listed below.</p>
+        <textarea id="askInput" rows="3" class="w-full border border-slate-300 rounded-lg p-3 text-base" placeholder="e.g. When do we spray the Block 4 pears?"></textarea>
+        <button id="askBtn" class="w-full boord-btn-primary rounded-lg py-3 font-bold">Ask</button>
+      </div>
+      <div id="askResult" class="hidden bg-white rounded-2xl shadow p-4 space-y-3">
+        <div id="askAnswer" class="text-base whitespace-pre-wrap"></div>
+        <div id="askSourcesWrap" class="hidden">
+          <div class="text-xs font-medium text-slate-500 mb-1">Based on these notes</div>
+          <div id="askSources" class="space-y-2"></div>
+        </div>
+        <p id="askFoot" class="text-[11px] text-slate-400"></p>
+      </div>
     </div>
 
     <!-- SETTINGS -->
