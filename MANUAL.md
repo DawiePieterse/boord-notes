@@ -450,7 +450,7 @@ access, so out of signal they just say so; capture is unaffected.
 and either put it, alone on one line, in `data\anthropic_key.txt`, or set the
 `ANTHROPIC_API_KEY` environment variable for the server task. Then restart
 the server. Optional settings, as environment variables: `NB_AI_MODEL` (the
-model, default `claude-opus-5-5`) and `NB_AI_DAILY_LIMIT` (calls per day
+model, default `claude-sonnet-5-5`, the cheaper of the two; `claude-opus-5-5` is stronger but costs about twice as much) and `NB_AI_DAILY_LIMIT` (calls per day
 across both buttons, default 100 - because there is no sign-in, this caps
 what a stray device could spend; it resets at midnight and on restart).
 

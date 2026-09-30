@@ -7,7 +7,7 @@ the two AI buttons - never a save.
 
 Configuration (all optional except the key):
   ANTHROPIC_API_KEY  or  data/anthropic_key.txt   the API key
-  NB_AI_MODEL        model id, default claude-opus-5-5
+  NB_AI_MODEL        model id, default claude-sonnet-5-5
   NB_AI_DAILY_LIMIT  calls per day across both features, default 100
 """
 import os
@@ -19,7 +19,7 @@ from typing import List
 from db import DATA_DIR
 
 KEY_FILE = os.path.join(DATA_DIR, "anthropic_key.txt")
-MODEL = os.environ.get("NB_AI_MODEL", "claude-opus-5-5")
+MODEL = os.environ.get("NB_AI_MODEL", "claude-sonnet-5-5")
 DAILY_LIMIT = int(os.environ.get("NB_AI_DAILY_LIMIT", "100"))
 
 # Roughly 100k tokens of notes. Below this, Ask sends every note; above it, it
