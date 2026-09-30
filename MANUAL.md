@@ -420,6 +420,40 @@ Search by title, notes text, or block/location, and/or filter by a single
 tag. Tap any entry to open its full detail - photos, tags, block, and full
 notes text.
 
+### AI help: Tidy up and Ask (optional)
+
+Two buttons that use Claude. They appear only once the server has an API
+key (below); without one the app looks and works exactly as before.
+
+- **Tidy up** (on Capture, under Notes) - adds punctuation and paragraphs to
+  dictated text, suggests a title, and suggests tags, preferring the ones
+  already in use. It keeps Afrikaans as Afrikaans and is told not to add or
+  drop facts. It only *proposes*: nothing changes until you tap **Use this**,
+  and **Keep mine** discards it. Read it through first - it can still get a
+  word wrong.
+- **Ask** (its own tab) - type a question in English or Afrikaans. The
+  answer is written from the saved notes only, and the notes it used are
+  listed underneath; tap one to open it. If the notes don't cover the
+  question it says so rather than guessing. Only notes already synced to
+  the server are searched, and archived ones are left out.
+
+**What leaves the farm.** When either button is used, the text involved (the
+note being tidied, or - for Ask - the question plus the saved notes, with
+their dates, blocks, tags, weather and photo captions) is sent to Anthropic's
+Claude API. Photos and GPS coordinates are not sent. Nothing is sent unless
+someone taps one of the buttons. Saving a note never depends on any of this.
+
+**Both need a connection.** They run on the server and need its internet
+access, so out of signal they just say so; capture is unaffected.
+
+**Setting it up (server admin).** Create an API key in the Anthropic Console
+and either put it, alone on one line, in `data\anthropic_key.txt`, or set the
+`ANTHROPIC_API_KEY` environment variable for the server task. Then restart
+the server. Optional settings, as environment variables: `NB_AI_MODEL` (the
+model, default `claude-opus-5-5`) and `NB_AI_DAILY_LIMIT` (calls per day
+across both buttons, default 100 - because there is no sign-in, this caps
+what a stray device could spend; it resets at midnight and on restart).
+
 ### Editing and archiving
 
 From an entry's detail view: **Edit** reopens it in the Capture form with
