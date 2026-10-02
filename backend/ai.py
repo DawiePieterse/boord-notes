@@ -14,7 +14,7 @@ import os
 import re
 import threading
 from datetime import date
-from typing import List
+from typing import List, Union
 
 from db import DATA_DIR
 
@@ -75,17 +75,28 @@ def _get_client():
         raise AiUnavailable("AI help is not set up on the server yet.")
     if _client is None or _client.api_key != key:
         import anthropic
-        _client = anthropic.Anthropic(api_key=key, timeout=90.0, max_retries=2)
+        # Timeout and retries are chosen per call (see call_json), so the
+        # shared client carries neither.
+        _client = anthropic.Anthropic(api_key=key)
     return _client
 
 
-def call_json(system: str, user: str, schema: dict, effort: str, max_tokens: int = 16000) -> dict:
+def call_json(system: Union[str, list], user: Union[str, list], schema: dict, effort: str,
+              max_tokens: int = 16000, max_retries: int = 2, timeout: float = 90.0,
+              feature: str = "ai") -> dict:
     """One request whose reply is constrained to `schema`. Raises AiUnavailable
-    with a plain-language message for anything that goes wrong."""
+    with a plain-language message for anything that goes wrong.
+
+    `system` and `user` may each be a plain string or a list of content
+    blocks, so a caller can mark a big, stable block with cache_control and
+    pay for it once rather than on every question.
+
+    `max_retries` and `timeout` are per call: a retry after the phone has
+    already given up only spends money on an answer nobody will see."""
     import json
     import anthropic
 
-    client = _get_client()
+    client = _get_client().with_options(max_retries=max_retries, timeout=timeout)
     _spend_call()
     try:
         response = client.messages.create(
@@ -104,6 +115,12 @@ def call_json(system: str, user: str, schema: dict, effort: str, max_tokens: int
     except anthropic.APIStatusError as e:
         print(f"[ai] API error {e.status_code}: {e}")
         raise AiUnavailable("AI help hit a problem. Try again in a moment.")
+
+    # Cache hits show up here: `cached` close to `in` means the notes block
+    # was reused from a question a few minutes earlier.
+    usage = response.usage
+    print(f"[ai] {feature}: in={usage.input_tokens} cached={usage.cache_read_input_tokens or 0} "
+          f"out={usage.output_tokens}")
 
     if response.stop_reason == "refusal":
         raise AiUnavailable("The AI declined to help with this one.")

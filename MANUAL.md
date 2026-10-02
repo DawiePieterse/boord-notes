@@ -435,7 +435,9 @@ key (below); without one the app looks and works exactly as before.
   answer is written from the saved notes only, and the notes it used are
   listed underneath; tap one to open it. If the notes don't cover the
   question it says so rather than guessing. Only notes already synced to
-  the server are searched, and archived ones are left out.
+  the server are searched, and archived ones are left out. Asking several
+  questions within a few minutes is cheaper than it looks: the API caches
+  the notes between questions, so only the question itself is new each time.
 
 **What leaves the farm.** When either button is used, the text involved (the
 note being tidied, or - for Ask - the question plus the saved notes, with
@@ -453,6 +455,8 @@ the server. Optional settings, as environment variables: `NB_AI_MODEL` (the
 model, default `claude-sonnet-5-5`, the cheaper of the two; `claude-opus-5-5` is stronger but costs about twice as much) and `NB_AI_DAILY_LIMIT` (calls per day
 across both buttons, default 100 - because there is no sign-in, this caps
 what a stray device could spend; it resets at midnight and on restart).
+The AI code has tests that run without a key or a connection: in `backend`,
+`pip install -r requirements-dev.txt` once, then `python -m pytest`.
 
 ### Editing and archiving
 

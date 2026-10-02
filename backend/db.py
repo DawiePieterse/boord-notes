@@ -5,7 +5,9 @@ from sqlmodel import SQLModel, Session, create_engine, select
 
 from models import Tag
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
+# NB_DATA_DIR lets the tests (and a preview) point the app at a scratch
+# folder; a real install never sets it and gets ../data as before.
+DATA_DIR = os.environ.get("NB_DATA_DIR") or os.path.join(os.path.dirname(__file__), "..", "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 PHOTOS_DIR = os.path.join(DATA_DIR, "photos")
 os.makedirs(PHOTOS_DIR, exist_ok=True)
