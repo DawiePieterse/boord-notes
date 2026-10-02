@@ -20,6 +20,7 @@ import ai  # noqa: E402
 from db import engine  # noqa: E402
 from main import app  # noqa: E402
 from models import Entry, EntryTagLink, Tag  # noqa: E402
+from routers.entries import _get_or_create_tags  # noqa: E402
 
 
 @pytest.fixture
@@ -83,9 +84,6 @@ def add_entry(entry_id: str, title: str, body: str, created: str, tags=(), block
     with Session(engine) as session:
         session.add(Entry(id=entry_id, title=title, body=body, block=block,
                           created_at=datetime.fromisoformat(created)))
-        for name in tags:
-            tag = Tag(name=name)
-            session.add(tag)
-            session.flush()
+        for tag in _get_or_create_tags(session, list(tags)):
             session.add(EntryTagLink(entry_id=entry_id, tag_id=tag.id))
         session.commit()

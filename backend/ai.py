@@ -81,9 +81,8 @@ def _get_client():
     return _client
 
 
-def call_json(system: Union[str, list], user: Union[str, list], schema: dict, effort: str,
-              max_tokens: int = 16000, max_retries: int = 2, timeout: float = 90.0,
-              feature: str = "ai") -> dict:
+def call_json(system: Union[str, list], user: Union[str, list], schema: dict, effort: str, *,
+              feature: str, max_tokens: int = 16000, max_retries: int = 2, timeout: float = 90.0) -> dict:
     """One request whose reply is constrained to `schema`. Raises AiUnavailable
     with a plain-language message for anything that goes wrong.
 
