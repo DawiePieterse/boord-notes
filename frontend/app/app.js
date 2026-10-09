@@ -516,13 +516,14 @@ async function loadUnusedTags() {
     tags = await NB.api("/api/tags");
   } catch (e) { handleApiError(e); return; } // offline - leave whatever was last shown
   const unused = tags.filter((t) => t.count === 0);
-  card.classList.toggle("hidden", unused.length === 0);
+  // Shown even with nothing unused: the card is also where new tags are added.
+  card.classList.remove("hidden");
   document.getElementById("unusedTagsList").innerHTML = unused.map((t) => `
     <div class="flex justify-between items-center">
       <span>${esc(t.name)}</span>
       <button type="button" data-tag="${esc(t.name)}" class="delete-tag text-red-600 text-xs font-medium">Remove</button>
     </div>
-  `).join("");
+  `).join("") || `<div class="text-slate-400">Every tag is in use</div>`;
   document.querySelectorAll(".delete-tag").forEach((btn) => {
     btn.addEventListener("click", async () => {
       try {
@@ -532,6 +533,27 @@ async function loadUnusedTags() {
       } catch (e) { NB.toast("Could not remove tag - try again once online"); }
     });
   });
+}
+
+async function createTagFromDashboard() {
+  const input = document.getElementById("newTagInput");
+  const name = input.value.trim();
+  if (!name) { input.focus(); return; }
+  const btn = document.getElementById("newTagBtn");
+  btn.disabled = true;
+  try {
+    await NB.api("/api/tags", { method: "POST", body: { name }, timeoutMs: 15000 });
+    input.value = "";
+    NB.toast(`Tag "${name}" added`);
+    loadUnusedTags();
+    loadTagSuggestions();
+  } catch (e) {
+    if (e.status === 409) NB.toast("That tag already exists");
+    else if (e.status === 400) NB.toast("Tag name is empty or too long");
+    else NB.toast("Could not add tag - try again once online");
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -964,6 +986,10 @@ function init() {
     // Back into the box, so the next tag can be typed straight away - and a
     // tap with the box still empty shows where the name goes.
     document.getElementById("tagInput").focus();
+  });
+  document.getElementById("newTagBtn").addEventListener("click", createTagFromDashboard);
+  document.getElementById("newTagInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); createTagFromDashboard(); }
   });
   document.getElementById("addPhotoBtn").addEventListener("click", openPhotoSourceSheet);
   document.getElementById("photoSourceCancel").addEventListener("click", closePhotoSourceSheet);

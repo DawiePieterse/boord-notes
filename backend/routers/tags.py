@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, func, select
+from sqlmodel import Session, SQLModel, func, select
 
 from db import get_session
 from models import Entry, EntryTagLink, Tag
@@ -37,6 +37,33 @@ def list_tags(session: Session = Depends(get_session)):
     result = [{"name": t.name, "count": counts.get(t.id, 0)} for t in tags]
     result.sort(key=lambda r: r["name"].lower())
     return result
+
+
+class TagIn(SQLModel):
+    name: str
+
+
+@router.post("")
+def create_tag(payload: TagIn, session: Session = Depends(get_session)):
+    """Add a tag before any note uses it, from the Dashboard - so a set of
+    tags can be laid out up front instead of only ever appearing while a
+    note is being written.
+
+    A name that differs from an existing tag only by case is refused rather
+    than added: "pruning" beside "Pruning" would split one filter into two.
+    Compared in Python, not SQL, for the same Afrikaans-diacritics reason as
+    the Entries search."""
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(400, "Tag name is empty")
+    if len(name) > 60:
+        raise HTTPException(400, "Tag name is too long")
+    for existing in session.exec(select(Tag.name)).all():
+        if existing.lower() == name.lower():
+            raise HTTPException(409, f"Tag already exists: {existing}")
+    session.add(Tag(name=name))
+    session.commit()
+    return {"name": name, "count": 0}
 
 
 @router.delete("/{name}")
