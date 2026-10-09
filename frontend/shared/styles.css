@@ -253,3 +253,23 @@ details[open] .disclosure { transform: rotate(90deg); }
 /* No hairline above a row whose only neighbour above is an empty, hidden one
    (no tags or photos chosen yet). */
 .group > .hide-empty:empty + * { background-image: none; }
+
+/* ---- Actions --------------------------------------------------------- */
+/* The round To do / Done tick, as in Reminders. */
+.check {
+  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+  border: 1.6px solid var(--label-3);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.check.on { background: var(--green); border-color: var(--green); }
+.check.on::after {
+  content: ""; width: 6px; height: 11px; margin-top: -2px;
+  border: solid #fff; border-width: 0 2.2px 2.2px 0; transform: rotate(45deg);
+}
+.chip-todo { background: color-mix(in srgb, var(--orange) 16%, transparent); color: var(--orange); }
+.tab-btn { position: relative; }
+.tab-badge {
+  position: absolute; top: -3px; right: -10px; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: var(--red); color: #fff;
+  font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
+}

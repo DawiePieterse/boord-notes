@@ -7,6 +7,8 @@ let editingEntryId = null;
 let editingCreatedAt = null;  // the entry's original capture time, preserved across an edit
 let allTags = [];       // [{name, count}] - the tag list, from the server or this phone's copy
 let allBlocks = [];     // [{id, name, variety, count}] - the block list from Settings
+let allActionTypes = []; // [{name, count}] - Prune, Fertilise... from Settings
+let currentActions = [];  // [{id, kind, detail, status, done_at, done_note}] on the note being written
 let editingBlockId = null;
 
 // Short alias - this wraps every note-derived value that gets interpolated
@@ -53,7 +55,7 @@ function showApp() {
 // ---------------------------------------------------------------------
 // Tabs
 // ---------------------------------------------------------------------
-const PAGE_TITLES = { dashboard: "Dashboard", entries: "Entries", ask: "Ask the Notes", settings: "Settings" };
+const PAGE_TITLES = { todo: "To do", dashboard: "Dashboard", entries: "Entries", ask: "Ask the Notes", settings: "Settings" };
 
 function setPageTitle(name) {
   document.getElementById("pageTitle").textContent =
@@ -68,7 +70,8 @@ function showPage(name) {
   window.scrollTo(0, 0);
   if (name === "dashboard") loadDashboard();
   if (name === "entries") loadEntries();
-  if (name === "settings") { loadTagsCard(); loadBlocksCard(); loadBackups(); }
+  if (name === "todo") loadTodo();
+  if (name === "settings") { loadTagsCard(); loadActionTypesCard(); loadBlocksCard(); loadBackups(); }
   // Start hunting for a GPS fix as soon as the capture screen opens, so one is
   // usually ready by the time he's finished dictating.
   if (name === "capture") {
@@ -98,6 +101,8 @@ async function fetchSavedList(path, key) {
 function refreshLists() {
   loadTags();
   loadBlocks();
+  loadActionTypes();
+  loadTodo();   // keeps the To do tab's count current
 }
 
 // ---------------------------------------------------------------------
@@ -138,6 +143,71 @@ function addTagFromInput() {
   const input = document.getElementById("tagInput");
   addCurrentTag(input.value.trim());
   input.value = "";
+}
+
+// ---------------------------------------------------------------------
+// Actions on the note being written. Tapping an action type adds it as To do;
+// its circle switches it to Done (stamped with this phone's time, so a job
+// recorded out of signal is dated when it was done).
+// ---------------------------------------------------------------------
+async function loadActionTypes() {
+  const { data } = await fetchSavedList("/api/action-types", "nb_action_types_copy");
+  if (!data) return allActionTypes;
+  if (JSON.stringify(data) !== JSON.stringify(allActionTypes)) {
+    allActionTypes = data;
+    renderActionKinds();
+  }
+  return allActionTypes;
+}
+
+function renderActionKinds() {
+  document.getElementById("actionKinds").innerHTML = allActionTypes.map((t) =>
+    `<button type="button" class="chip" data-kind="${esc(t.name)}">+ ${esc(t.name)}</button>`).join("");
+}
+
+const actionText = (a) => a.detail ? `${a.kind} with ${a.detail}` : a.kind;
+
+function renderActionRows() {
+  document.getElementById("actionRows").innerHTML = currentActions.map((a) => `
+    <div class="row" data-action="${esc(a.id)}">
+      <button type="button" class="check ${a.status === "done" ? "on" : ""}" data-toggle
+        aria-label="${a.status === "done" ? "Done - tap for to do" : "To do - tap if done"}"></button>
+      <span class="font-semibold shrink-0">${esc(a.kind)}</span>
+      <input class="input text-[15px]" data-detail value="${esc(a.detail)}" placeholder="with what? (optional)" maxlength="200">
+      <button type="button" class="text-[22px] leading-none px-1" style="color: var(--label-3)" data-remove aria-label="Remove">&times;</button>
+    </div>`).join("");
+}
+
+function addAction(kind) {
+  kind = (kind || "").trim();
+  if (!kind) return;
+  // The spelling already on the list, if it's there in another case.
+  const known = allActionTypes.find((t) => t.name.toLowerCase() === kind.toLowerCase());
+  currentActions.push({ id: NB.uuid(), kind: known ? known.name : kind, detail: "", status: "todo", done_at: null, done_note: "" });
+  renderActionRows();
+  const inputs = document.querySelectorAll("#actionRows [data-detail]");
+  inputs[inputs.length - 1].focus();
+}
+
+function addActionFromInput() {
+  const input = document.getElementById("actionKindInput");
+  addAction(input.value);
+  input.value = "";
+}
+
+function actionRowTapped(e) {
+  const row = e.target.closest("[data-action]");
+  if (!row) return;
+  const action = currentActions.find((a) => a.id === row.dataset.action);
+  if (e.target.closest("[data-remove]")) {
+    currentActions = currentActions.filter((a) => a !== action);
+    renderActionRows();
+  } else if (e.target.closest("[data-toggle]")) {
+    const done = action.status !== "done";
+    Object.assign(action, { status: done ? "done" : "todo", done_at: done ? new Date().toISOString() : null });
+    if (!done) action.done_note = "";
+    renderActionRows();
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -410,6 +480,9 @@ function resetCaptureForm() {
   document.getElementById("entryBody").value = "";
   document.getElementById("tagInput").value = "";
   currentTags = [];
+  currentActions = [];
+  renderActionRows();
+  document.getElementById("actionKindInput").value = "";
   document.getElementById("tagPickWrap").open = false;
   dropPendingPhotos();
   existingPhotos = [];
@@ -428,6 +501,7 @@ async function saveEntry() {
   const body = document.getElementById("entryBody").value.trim();
   if (!title && !body) { NB.toast("Add a title or some notes first"); return; }
   addTagFromInput(); // capture anything left un-submitted in the tag input
+  addActionFromInput();
 
   const id = editingEntryId || NB.uuid();
   const entry = {
@@ -436,6 +510,7 @@ async function saveEntry() {
     body,
     block: getCaptureBlock(),
     tags: currentTags,
+    actions: currentActions.map((a) => ({ ...a, detail: a.detail.trim() })),
     // When this note was WRITTEN, which an edit never changes. Stamping "now"
     // here made a corrected note jump to the top of the list and count as
     // captured today for as long as it sat unsynced - the server ignores the
@@ -490,6 +565,8 @@ async function editEntry(entry) {
   setCaptureBlock(entry.block || "");
   document.getElementById("entryBody").value = entry.body;
   currentTags = [...entry.tags];
+  currentActions = (entry.actions || []).map((a) => ({ ...a }));
+  renderActionRows();
   existingPhotos = [...entry.photos];
   dropPendingPhotos();
   document.getElementById("cancelEditBtn").classList.remove("hidden");
@@ -540,6 +617,7 @@ async function syncLoop() {
         /* leave unsynced, retry next tick */
       }
     }
+    if (await flushDoneQueue()) pushedSomething = true;
   } catch (e) { /* never let a sync failure surface as an error */ }
   syncing = false;
 
@@ -565,6 +643,7 @@ function refreshVisiblePage() {
   const name = visiblePageName();
   if (name === "dashboard") loadDashboard();
   else if (name === "entries") loadEntries();
+  else if (name === "todo") loadTodo();
 }
 
 async function updateUnsyncedBadge() {
@@ -770,7 +849,9 @@ function entryCardHtml(e) {
   const thumb = e.photos.length
     ? `<img src="${esc(photoUrl(e.photos[0].filename))}" class="list-thumb" alt="">`
     : `<div class="list-thumb-empty">${NOTE_ICON}</div>`;
-  const tags = e.tags.map((t) => `<span class="chip-sm">${esc(t)}</span>`).join("");
+  const todo = (e.actions || []).filter((a) => a.status !== "done" && !doneQueue().some((u) => u.action_id === a.id)).length;
+  const tags = (todo ? `<span class="chip-sm chip-todo">${todo} to do</span>` : "") +
+    e.tags.map((t) => `<span class="chip-sm">${esc(t)}</span>`).join("");
   const unsynced = e.created_by === UNSYNCED ? `<span class="badge-unsynced text-[11px] px-2 py-0">Not synced</span>` : "";
   return `
     <button data-id="${esc(e.id)}" class="entry-card row tappable items-start">
@@ -792,7 +873,7 @@ const UNSYNCED = "(not yet synced)";
 function localEntryAsServerShape(local) {
   return {
     id: local.id, title: local.title, body: local.body, block: local.block,
-    tags: local.tags || [], created_at: local.created_at, photos: [], archived: false,
+    tags: local.tags || [], actions: local.actions || [], created_at: local.created_at, photos: [], archived: false,
     created_by: local.synced ? "" : UNSYNCED,
     // Carried through so a note captured out on the farm shows its location
     // and conditions straight away, not only once it has reached the server.
@@ -875,6 +956,157 @@ async function loadEntries() {
 }
 
 // ---------------------------------------------------------------------
+// To do: every action still waiting, grouped by block, longest-waiting first.
+// The list is the server's (or this phone's saved copy of it), plus actions
+// on notes this phone hasn't synced yet, minus anything ticked off here that
+// hasn't reached the server.
+// ---------------------------------------------------------------------
+let todoItems = [];
+
+async function loadTodo() {
+  const { data } = await fetchSavedList("/api/actions?status=todo", "nb_todo_copy");
+  const unsynced = (await IDB.getUnsyncedEntries());
+  const unsyncedIds = new Set(unsynced.map((e) => e.id));
+  const queued = new Set(doneQueue().map((u) => u.action_id));
+  const local = unsynced.flatMap((e) => (e.actions || []).filter((a) => a.status !== "done").map((a) => ({
+    ...a, entry_id: e.id, entry_title: e.title, entry_created_at: e.created_at,
+    block: e.block, variety: varietyOf(e.block), photo: null,
+  })));
+  todoItems = [...(data || []).filter((a) => !unsyncedIds.has(a.entry_id)), ...local]
+    .filter((a) => !queued.has(a.id))
+    .sort((a, b) => NB.serverTimeMs(a.entry_created_at) - NB.serverTimeMs(b.entry_created_at));
+
+  const badge = document.getElementById("todoBadge");
+  badge.textContent = todoItems.length;
+  badge.classList.toggle("hidden", !todoItems.length);
+  renderTodo();
+}
+
+function renderTodo() {
+  const groups = new Map();
+  for (const a of todoItems) {
+    const key = a.block ? blockLabel(a) : "No block";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(a);
+  }
+  document.getElementById("todoList").innerHTML = [...groups].map(([block, items]) => `
+    <div>
+      <div class="group-header normal-case">${esc(block)}</div>
+      <div class="group">${items.map((a) => `
+        <div class="row items-start">
+          <button type="button" class="check mt-0.5" data-done="${esc(a.id)}" data-entry="${esc(a.entry_id)}" aria-label="Mark done"></button>
+          <button type="button" class="entry-card row-label text-left" data-id="${esc(a.entry_id)}">
+            <span class="block font-semibold">${esc(actionText(a))}</span>
+            <span class="block row-sub truncate">${esc(a.entry_title) || "(untitled)"} · ${NB.fmtDate(a.entry_created_at)}</span>
+          </button>
+          ${a.photo ? `<img src="${esc(photoUrl(a.photo))}" class="list-thumb" style="width: 44px; height: 44px" alt="">` : ""}
+        </div>`).join("")}
+      </div>
+    </div>`).join("");
+  document.getElementById("todoEmpty").classList.toggle("hidden", todoItems.length > 0);
+}
+
+// Marks waiting to reach the server, kept on the phone so ticking a job off
+// works out in the orchard: [{action_id, entry_id, done_at, done_note}].
+function doneQueue() {
+  try { return JSON.parse(localStorage.getItem("nb_done_queue")) || []; } catch (e) { return []; }
+}
+
+function saveDoneQueue(queue) {
+  try { localStorage.setItem("nb_done_queue", JSON.stringify(queue)); } catch (e) { /* storage blocked */ }
+}
+
+let doneTarget = null;   // {actionId, entryId} the open "Mark as done" sheet is for
+
+function openDoneSheet(actionId, entryId) {
+  const action = todoItems.find((a) => a.id === actionId)
+    || (currentDetailEntry?.actions || []).find((a) => a.id === actionId);
+  if (!action) return;
+  doneTarget = { actionId, entryId };
+  const block = action.block !== undefined ? action.block : currentDetailEntry?.block;
+  document.getElementById("doneWhat").textContent =
+    actionText(action) + (block ? ` · ${blockLabel({ block, variety: action.variety || currentDetailEntry?.variety })}` : "");
+  document.getElementById("doneNote").value = "";
+  setOverlay("doneSheet", true);
+}
+
+async function confirmDone() {
+  if (!doneTarget) return;
+  const { actionId, entryId } = doneTarget;
+  const mark = { status: "done", done_at: new Date().toISOString(), done_note: document.getElementById("doneNote").value.trim() };
+  setOverlay("doneSheet", false);
+  doneTarget = null;
+
+  // A note not yet synced carries the mark itself, in the same sync. One
+  // already on the server gets it through the queue. Either way this phone's
+  // own copy is updated, so the note shows it done offline too.
+  const local = (await IDB.getAllEntries()).find((e) => e.id === entryId);
+  const own = local && (local.actions || []).find((a) => a.id === actionId);
+  if (own) { Object.assign(own, mark); await IDB.addEntry(local); }
+  const shown = (currentDetailEntry?.actions || []).find((a) => a.id === actionId);
+  if (shown) Object.assign(shown, mark);
+  if (!local || local.synced) {
+    saveDoneQueue([...doneQueue().filter((u) => u.action_id !== actionId),
+                   { action_id: actionId, entry_id: entryId, done_at: mark.done_at, done_note: mark.done_note }]);
+  }
+
+  NB.toast("Marked done");
+  await loadTodo();
+  if (currentDetailEntry && currentDetailEntry.id === entryId) renderDetailActions(currentDetailEntry);
+  refreshVisiblePage();
+  syncLoop();
+}
+
+// Sends the queued marks; true if any reached the server. A mark for an
+// action the server no longer has (its note archived and purged, or edited
+// away) is dropped rather than retried for ever.
+async function flushDoneQueue() {
+  let sent = false;
+  for (const u of doneQueue()) {
+    try {
+      await NB.api(`/api/actions/${encodeURIComponent(u.action_id)}`, {
+        method: "PATCH", body: { status: "done", done_at: u.done_at, done_note: u.done_note },
+      });
+    } catch (e) {
+      if (NB.isNetworkError(e)) break;
+      if (e.status !== 404) continue;
+    }
+    saveDoneQueue(doneQueue().filter((q) => q.action_id !== u.action_id));
+    sent = true;
+  }
+  return sent;
+}
+
+// ---------------------------------------------------------------------
+// Settings: action types (the same pattern as tags)
+// ---------------------------------------------------------------------
+async function loadActionTypesCard() {
+  const types = await loadActionTypes();
+  document.getElementById("actionTypesList").innerHTML =
+    types.map((t) => settingsRowHtml(t.name, "", t.count, `data-remove-action-type="${esc(t.name)}"`)).join("") ||
+    `<div class="empty">No actions yet</div>`;
+}
+
+async function removeActionType(name) {
+  try {
+    await NB.api(`/api/action-types/${encodeURIComponent(name)}`, { method: "DELETE" });
+    loadActionTypesCard();
+  } catch (e) { NB.toast(NB.errorMessage(e, "Could not remove action")); }
+}
+
+async function createActionType() {
+  const input = document.getElementById("newActionTypeInput");
+  const name = input.value.trim();
+  if (!name) { input.focus(); return; }
+  try {
+    await NB.api("/api/action-types", { method: "POST", body: { name }, timeoutMs: 15000 });
+    input.value = "";
+    NB.toast(`Action "${name}" added`);
+    loadActionTypesCard();
+  } catch (e) { NB.toast(NB.errorMessage(e, "Could not add action")); }
+}
+
+// ---------------------------------------------------------------------
 // Entry detail modal
 // ---------------------------------------------------------------------
 let currentDetailEntry = null;
@@ -900,12 +1132,30 @@ async function showEntryDetail(id) {
   document.getElementById("detailBlock").textContent = entry.block ? `📍 ${blockLabel(entry)}` : "";
   renderDetailContext(entry);
   document.getElementById("detailTags").innerHTML = entry.tags.map((t) => `<span class="chip">${esc(t)}</span>`).join("");
+  renderDetailActions(entry);
   document.getElementById("detailBody").textContent = entry.body;
   // A locally-held entry's photos haven't been uploaded, so they have no
   // server filename yet - render them straight from the stored Blob.
   document.getElementById("detailPhotos").innerHTML = (entry.localPhotoUrls || entry.photos.map((p) => photoUrl(p.filename)))
     .map((src) => `<img src="${esc(src)}" class="w-full aspect-square object-cover rounded-[10px]" alt="">`).join("");
   setOverlay("detailModal", true);
+}
+
+// The note's actions, with any ticked off on this phone but not yet synced
+// shown as done already.
+function renderDetailActions(entry) {
+  const queued = new Map(doneQueue().map((u) => [u.action_id, u]));
+  document.getElementById("detailTodo").innerHTML = (entry.actions || []).map((a) => {
+    const done = a.status === "done" ? a : queued.get(a.id);
+    const when = done ? `Done ${NB.fmtDate(done.done_at)}${done.done_note ? ` · ${esc(done.done_note)}` : ""}` : "To do";
+    return `
+      <div class="row">
+        ${done ? `<span class="check on"></span>`
+               : `<button type="button" class="check" data-done="${esc(a.id)}" data-entry="${esc(entry.id)}" aria-label="Mark done"></button>`}
+        <span class="row-label"><span class="block font-semibold">${esc(actionText(a))}</span>
+          <span class="block row-sub">${when}</span></span>
+      </div>`;
+  }).join("");
 }
 
 // Where the note was taken and what it was doing at the time. Both are
@@ -1189,6 +1439,32 @@ function init() {
   onTap("blocksList", "[data-edit-block]", (b) => editBlock(b.dataset.editBlock));
   onTap("unlistedList", "[data-list-block]", (b) => listBlock(b.dataset.listBlock));
   onTap("backupsList", "[data-download]", (b) => downloadBackup(b.dataset.download));
+  onTap("actionKinds", "[data-kind]", (b) => addAction(b.dataset.kind));
+  onTap("actionTypesList", "[data-remove-action-type]", (b) => removeActionType(b.dataset.removeActionType));
+  document.getElementById("actionRows").addEventListener("click", actionRowTapped);
+  document.getElementById("actionRows").addEventListener("input", (e) => {
+    const row = e.target.closest("[data-action]");
+    const action = row && currentActions.find((a) => a.id === row.dataset.action);
+    if (action && e.target.matches("[data-detail]")) action.detail = e.target.value;
+  });
+  // The tick on the To do list and on an open note both mark an action done.
+  document.addEventListener("click", (e) => {
+    const tick = e.target.closest("[data-done]");
+    if (tick) openDoneSheet(tick.dataset.done, tick.dataset.entry);
+  });
+  document.getElementById("doneConfirmBtn").addEventListener("click", confirmDone);
+  document.getElementById("doneCancelBtn").addEventListener("click", () => setOverlay("doneSheet", false));
+  document.getElementById("doneSheet").addEventListener("click", (e) => {
+    if (e.target.id === "doneSheet") setOverlay("doneSheet", false);
+  });
+  document.getElementById("addActionBtn").addEventListener("click", addActionFromInput);
+  document.getElementById("actionKindInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); addActionFromInput(); }
+  });
+  document.getElementById("newActionTypeBtn").addEventListener("click", createActionType);
+  document.getElementById("newActionTypeInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); createActionType(); }
+  });
   document.addEventListener("click", (e) => {
     const card = e.target.closest(".entry-card");
     if (card) showEntryDetail(card.dataset.id);

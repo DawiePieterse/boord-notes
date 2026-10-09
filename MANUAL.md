@@ -392,8 +392,8 @@ HEIC out of the album attaches just like a camera shot does.
 
 ## 4. Using the App
 
-The app is laid out like an iPhone app: the tabs - **Capture**, **Dashboard**,
-**Entries**, **Ask** (only when AI help is on) and **Settings** - sit along the
+The app is laid out like an iPhone app: the tabs - **Capture**, **To do**,
+**Dashboard**, **Entries**, **Ask** (only when AI help is on) and **Settings** - sit along the
 bottom of the screen, and each screen's name is shown large at the top. It
 follows the phone's own light or dark setting. A note opened from a list
 slides up from the bottom; tap **Done**, or the dimmed area above it, to close
@@ -408,6 +408,11 @@ it.
   type it, e.g. "near the pump station". Before any blocks are set up the
   field is a plain text box.
 - **Notes** - the dictated (or typed) body of the entry.
+- **Actions** - what the note leads to: tap **+ Prune**, **+ Fertilise**,
+  **+ Water** and so on (or type another and tap **Add**), then say *with
+  what* if it matters, e.g. "LAN 200 g/tree". A note can have several. Each
+  starts as **To do** and goes on the To do list; tap its circle if it has
+  already been done. See [To do](#to-do).
 - **Tags** - add as many as fit the note. Tap **Choose from existing tags**
   to open the list and tap each one to add it; or type a word and tap
   **Add** (or press Enter) - a word that isn't a tag yet becomes a new
@@ -418,6 +423,21 @@ it.
 Tap **Save Note** - the entry is saved to the phone instantly and
 starts syncing to the server in the background (see
 [chapter 5](#5-how-offline-capture-works)).
+
+### To do
+
+Every action still waiting, grouped by block, longest-waiting first. The tab
+shows how many are open. Tap the circle to mark one done - there is a line to
+say what was actually used, if it differed from the plan - and it leaves the
+list. Tap the rest of the row to open its note, where all its actions are
+listed with when each was done.
+
+This is how an observation becomes work and then history: a photo of flush
+on 8a with *To do: Prune*; ticked off when the pruning is done; and the note
+then records that 8a was pruned, on which day.
+
+Marking done works with no signal: the tick is kept on the phone and reaches
+the server with the next sync, dated when it was ticked, not when it synced.
 
 ### Dashboard
 
@@ -481,6 +501,14 @@ the Capture screen's tag suggestions. A name that matches an existing tag
 The same goes for tags typed on a note: "pruning" files the note under the
 existing "Pruning" tag rather than starting a second one.
 Adding and removing need a connection to the server.
+
+### Actions (Settings)
+
+The **Actions** card lists the action types offered on the Capture screen -
+Spray, Water, Fertilise, Prune, Pick and Scout to start with - with how many
+notes use each. Add one with **Add**; remove one once no note uses it. An
+action typed on a note that isn't on the list is added to it, and one typed
+in other capitals ("prune") files under the existing spelling.
 
 ### Blocks (Settings)
 
@@ -698,6 +726,7 @@ across after the fact; re-enter it from the installed app going forward.
   normally picked from the block list, or any spot typed in. The block's type
   is looked up from the list, not stored on the note.
 - `tags` - any number of free-form tags.
+- `actions` - any number of actions (see below).
 - `photos` - any number of attached photos.
 - `created_by` / `created_at`, `updated_by` / `updated_at`.
 - `archived` - true once soft-deleted; archived entries are hidden from
@@ -717,6 +746,14 @@ coordinates and tonight's weather.
 ### Tag
 Just a `name` - created automatically the first time anyone uses it on an
 entry, shared across all entries.
+
+### Action
+On a note: `kind` (Prune, Fertilise...), `detail` (with what, free text),
+`status` (to do or done), `done_at` (the phone's time when it was ticked off)
+and `done_note` (what was actually used, if it differed). Its id is made on
+the phone, like a note's, so an action added or ticked off offline syncs
+without duplicating. The action types themselves are a list of names, like
+tags.
 
 ### Block
 `name` and `variety` (the type, may be blank). Kept in this app, not in
