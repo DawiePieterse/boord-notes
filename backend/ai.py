@@ -153,7 +153,8 @@ def entry_text(e: dict) -> str:
     lines = [f'<note id="{e["id"]}">', f'Title: {e["title"] or "(untitled)"}',
              f'Written: {str(e["created_at"])[:10]}']
     if e.get("block"):
-        lines.append(f'Block/location: {e["block"]}')
+        variety = f' ({e["variety"]})' if e.get("variety") else ""
+        lines.append(f'Block/location: {e["block"]}{variety}')
     if e.get("tags"):
         lines.append("Tags: " + ", ".join(e["tags"]))
     if e.get("weather_condition") or e.get("weather_temp") is not None:

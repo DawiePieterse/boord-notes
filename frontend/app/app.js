@@ -6,6 +6,8 @@ let existingPhotos = [];  // [{id, filename}] - already on the server (edit mode
 let editingEntryId = null;
 let editingCreatedAt = null;  // the entry's original capture time, preserved across an edit
 let allTagNames = [];
+let allBlocks = [];     // [{id, name, variety, count}] - the block list from Settings
+let editingBlockId = null;
 
 // Short alias - this wraps every note-derived value that gets interpolated
 // into an HTML string below. See NB.escapeHtml in shared/api.js.
@@ -25,6 +27,7 @@ const serverLikelyReachable = NB.serverLikelyReachable;
 function showApp() {
   document.getElementById("appVersion").textContent = `v${NB.VERSION}`;
   loadTagSuggestions();
+  loadBlocks();
   loadAiStatus();
   updateUnsyncedBadge();
   // Capture, not Dashboard: the app is opened to write a note down before it
@@ -45,7 +48,7 @@ function showPage(name) {
   document.querySelectorAll(".tab-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === name));
   if (name === "dashboard") loadDashboard();
   if (name === "entries") loadEntries();
-  if (name === "settings") { loadTagsCard(); loadBackups(); }
+  if (name === "settings") { loadTagsCard(); loadBlocksCard(); loadBackups(); }
   // Start hunting for a GPS fix as soon as the capture screen opens, so one is
   // usually ready by the time he's finished dictating.
   if (name === "capture") {
@@ -56,20 +59,40 @@ function showPage(name) {
 }
 
 // ---------------------------------------------------------------------
+// Lists kept on the phone. The tag and block lists come from the server, but
+// the Capture screen needs them most out in the orchard with no signal - so
+// the last good copy is kept here and used whenever the server can't answer.
+// ---------------------------------------------------------------------
+function saveListCopy(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* storage full or blocked */ }
+}
+
+function savedListCopy(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch (e) { return fallback; }
+}
+
+// ---------------------------------------------------------------------
 // Tags
 // ---------------------------------------------------------------------
 async function loadTagSuggestions() {
+  let tags;
   try {
-    const tags = await NB.api("/api/tags");
-    allTagNames = tags.map((t) => t.name);
-    document.getElementById("tagSuggestions").innerHTML =
-      allTagNames.map((n) => `<option value="${esc(n)}">`).join("");
-    const filterSelect = document.getElementById("tagFilter");
-    const current = filterSelect.value;
-    filterSelect.innerHTML = `<option value="">All tags</option>` +
-      tags.map((t) => `<option value="${esc(t.name)}">${esc(t.name)} (${t.count})</option>`).join("");
-    filterSelect.value = current;
-  } catch (e) { handleApiError(e); /* offline - keep the suggestions already loaded */ }
+    tags = await NB.api("/api/tags");
+    saveListCopy("nb_tags_copy", tags);
+  } catch (e) {
+    handleApiError(e);
+    if (allTagNames.length) return; // offline - keep the suggestions already loaded
+    tags = savedListCopy("nb_tags_copy", []);
+  }
+  allTagNames = tags.map((t) => t.name);
+  document.getElementById("tagSuggestions").innerHTML =
+    allTagNames.map((n) => `<option value="${esc(n)}">`).join("");
+  const filterSelect = document.getElementById("tagFilter");
+  const current = filterSelect.value;
+  filterSelect.innerHTML = `<option value="">All tags</option>` +
+    tags.map((t) => `<option value="${esc(t.name)}">${esc(t.name)} (${t.count})</option>`).join("");
+  filterSelect.value = current;
+  renderTagChips();
 }
 
 function renderTagChips() {
@@ -79,6 +102,18 @@ function renderTagChips() {
   document.querySelectorAll(".remove-tag").forEach((btn) => {
     btn.addEventListener("click", () => {
       currentTags.splice(parseInt(btn.dataset.i), 1);
+      renderTagChips();
+    });
+  });
+
+  const pickable = allTagNames.filter((n) => !currentTags.includes(n));
+  document.getElementById("tagPickWrap").classList.toggle("hidden", !pickable.length);
+  document.getElementById("tagPick").innerHTML = pickable.map((n) =>
+    `<button type="button" class="tag-chip-pick" data-name="${esc(n)}">+ ${esc(n)}</button>`
+  ).join("");
+  document.querySelectorAll("#tagPick .tag-chip-pick").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (!currentTags.includes(btn.dataset.name)) currentTags.push(btn.dataset.name);
       renderTagChips();
     });
   });
@@ -92,6 +127,118 @@ function addTagFromInput() {
     renderTagChips();
   }
   input.value = "";
+}
+
+// ---------------------------------------------------------------------
+// Blocks. A note names its block as text; the list just keeps the spelling
+// consistent and knows each block's type (variety).
+// ---------------------------------------------------------------------
+const OTHER_BLOCK = "__other__";
+
+async function loadBlocks() {
+  let data;
+  try {
+    data = await NB.api("/api/blocks");
+    saveListCopy("nb_blocks_copy", data.blocks);
+    // The sync loop calls this every pass. Rebuilding the picker under a
+    // thumb that is halfway through choosing a block would be worse than
+    // useless, so only redraw when the list has actually changed.
+    const changed = JSON.stringify(data.blocks) !== JSON.stringify(allBlocks);
+    allBlocks = data.blocks;
+    if (!changed) return data;
+  } catch (e) {
+    handleApiError(e);
+    if (allBlocks.length) return; // offline - keep the list already loaded
+    allBlocks = savedListCopy("nb_blocks_copy", []);
+  }
+  renderBlockPicker();
+  renderBlockFilters();
+  return data;
+}
+
+function varietyOf(blockName) {
+  const block = allBlocks.find((b) => b.name === blockName);
+  return block ? block.variety : "";
+}
+
+// "8a (TMR)" - the variety from the server's answer, or for a note still only
+// on this phone, from the block list.
+function blockLabel(entry) {
+  if (!entry.block) return "";
+  const variety = entry.variety || varietyOf(entry.block);
+  return variety ? `${entry.block} (${variety})` : entry.block;
+}
+
+function varieties() {
+  return [...new Set(allBlocks.map((b) => b.variety).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function blockPickerInUse() {
+  return !document.getElementById("entryBlockSelect").classList.contains("hidden");
+}
+
+function getCaptureBlock() {
+  const select = document.getElementById("entryBlockSelect");
+  if (blockPickerInUse() && select.value !== OTHER_BLOCK) return select.value;
+  return document.getElementById("entryBlock").value.trim();
+}
+
+function setCaptureBlock(name) {
+  const select = document.getElementById("entryBlockSelect");
+  const input = document.getElementById("entryBlock");
+  if (!blockPickerInUse()) { input.value = name; input.classList.remove("hidden"); return; }
+  const listed = !name || allBlocks.some((b) => b.name === name);
+  select.value = listed ? name : OTHER_BLOCK;
+  input.value = listed ? "" : name;
+  input.classList.toggle("hidden", listed);
+}
+
+// Grouped by type, so the iPhone's picker wheel reads "TMR: 8a, 8b...".
+function renderBlockPicker() {
+  const select = document.getElementById("entryBlockSelect");
+  const keep = getCaptureBlock();
+  select.classList.toggle("hidden", !allBlocks.length);
+  const groups = new Map();
+  for (const b of allBlocks) {
+    const key = b.variety || "";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(b);
+  }
+  const option = (b) => `<option value="${esc(b.name)}">${esc(b.name)}</option>`;
+  const ordered = [...groups.keys()].sort((a, b) => (a === "") - (b === "") || a.localeCompare(b));
+  select.innerHTML = `<option value="">No block</option>` +
+    ordered.map((v) => v
+      ? `<optgroup label="${esc(v)}">${groups.get(v).map(option).join("")}</optgroup>`
+      : groups.get(v).map(option).join("")).join("") +
+    `<option value="${OTHER_BLOCK}">Somewhere else (type it)</option>`;
+  setCaptureBlock(keep);
+}
+
+function renderBlockFilters() {
+  const blockFilter = document.getElementById("blockFilter");
+  const varietyFilter = document.getElementById("varietyFilter");
+  const keepBlock = blockFilter.value;
+  const keepVariety = varietyFilter.value;
+  blockFilter.innerHTML = `<option value="">All blocks</option>` +
+    allBlocks.map((b) => `<option value="${esc(b.name)}">${esc(b.name)}</option>`).join("");
+  const types = varieties();
+  varietyFilter.innerHTML = `<option value="">All types</option>` +
+    types.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  blockFilter.value = allBlocks.some((b) => b.name === keepBlock) ? keepBlock : "";
+  varietyFilter.value = types.includes(keepVariety) ? keepVariety : "";
+  blockFilter.classList.toggle("hidden", !allBlocks.length);
+  varietyFilter.classList.toggle("hidden", !types.length);
+  document.getElementById("varietySuggestions").innerHTML =
+    types.map((v) => `<option value="${esc(v)}">`).join("");
+}
+
+function onBlockSelectChange() {
+  const other = document.getElementById("entryBlockSelect").value === OTHER_BLOCK;
+  const input = document.getElementById("entryBlock");
+  input.classList.toggle("hidden", !other);
+  if (other) input.focus();
+  else input.value = "";
 }
 
 // ---------------------------------------------------------------------
@@ -275,10 +422,11 @@ function renderCaptureContext() {
 // ---------------------------------------------------------------------
 function resetCaptureForm() {
   document.getElementById("entryTitle").value = "";
-  document.getElementById("entryBlock").value = "";
+  setCaptureBlock("");
   document.getElementById("entryBody").value = "";
   document.getElementById("tagInput").value = "";
   currentTags = [];
+  document.getElementById("tagPickWrap").open = false;
   pendingPhotos = [];
   existingPhotos = [];
   hideTidyResult();
@@ -302,7 +450,7 @@ async function saveEntry() {
     id,
     title,
     body,
-    block: document.getElementById("entryBlock").value.trim(),
+    block: getCaptureBlock(),
     tags: currentTags,
     // When this note was WRITTEN, which an edit never changes. Stamping "now"
     // here made a corrected note jump to the top of the list and count as
@@ -355,7 +503,7 @@ async function editEntry(entry) {
   editingEntryId = entry.id;
   editingCreatedAt = entry.created_at;
   document.getElementById("entryTitle").value = entry.title;
-  document.getElementById("entryBlock").value = entry.block || "";
+  setCaptureBlock(entry.block || "");
   document.getElementById("entryBody").value = entry.body;
   currentTags = [...entry.tags];
   existingPhotos = [...entry.photos];
@@ -406,6 +554,7 @@ async function syncLoop() {
 
   updateUnsyncedBadge();
   loadTagSuggestions();
+  loadBlocks();
 
   // Anything that just reached the server changes what both screens should be
   // showing - an entry stops being "(not yet synced)" and starts counting
@@ -555,6 +704,97 @@ async function createTag() {
 }
 
 // ---------------------------------------------------------------------
+// Settings: the block list
+// ---------------------------------------------------------------------
+async function loadBlocksCard() {
+  const data = await loadBlocks();
+  if (!data) return; // offline - leave whatever was last shown
+  document.getElementById("blocksList").innerHTML = data.blocks.map((b) => `
+    <div class="flex justify-between items-center gap-2">
+      <span class="min-w-0">${esc(b.name)}${b.variety ? ` <span class="text-slate-400">· ${esc(b.variety)}</span>` : ""}</span>
+      <span class="shrink-0 flex items-center gap-3">
+        ${b.count
+          ? `<span class="text-slate-400 text-xs">${b.count} ${b.count === 1 ? "note" : "notes"}</span>`
+          : `<button type="button" data-id="${b.id}" class="delete-block text-red-600 text-xs font-medium">Remove</button>`}
+        <button type="button" data-id="${b.id}" class="edit-block text-xs font-medium text-slate-600">Edit</button>
+      </span>
+    </div>
+  `).join("") || `<div class="text-slate-400">No blocks yet - add the first one below.</div>`;
+
+  document.getElementById("unlistedWrap").classList.toggle("hidden", !data.unlisted.length);
+  document.getElementById("unlistedList").innerHTML = data.unlisted.map((u) => `
+    <div class="flex justify-between items-center gap-2">
+      <span class="min-w-0">${esc(u.name)} <span class="text-slate-400 text-xs">· ${u.count} ${u.count === 1 ? "note" : "notes"}</span></span>
+      <button type="button" data-name="${esc(u.name)}" class="list-block shrink-0 text-xs font-medium text-slate-600">+ Add to list</button>
+    </div>
+  `).join("");
+
+  document.querySelectorAll("#blocksList .edit-block").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const block = data.blocks.find((b) => String(b.id) === btn.dataset.id);
+      editingBlockId = block.id;
+      document.getElementById("blockNameInput").value = block.name;
+      document.getElementById("blockVarietyInput").value = block.variety;
+      document.getElementById("blockFormTitle").textContent = `Edit ${block.name} - a new name is carried onto its notes`;
+      document.getElementById("blockSaveBtn").textContent = "Save block";
+      document.getElementById("blockCancelBtn").classList.remove("hidden");
+      document.getElementById("blockNameInput").focus();
+    });
+  });
+  document.querySelectorAll("#blocksList .delete-block").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await NB.api(`/api/blocks/${btn.dataset.id}`, { method: "DELETE" });
+        if (String(editingBlockId) === btn.dataset.id) resetBlockForm();
+        loadBlocksCard();
+      } catch (e) { NB.toast("Could not remove block - try again once online"); }
+    });
+  });
+  // Typed before the list existed: the name goes into the form, so the type
+  // can be filled in before it is added.
+  document.querySelectorAll("#unlistedList .list-block").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      resetBlockForm();
+      document.getElementById("blockNameInput").value = btn.dataset.name;
+      document.getElementById("blockVarietyInput").focus();
+    });
+  });
+}
+
+function resetBlockForm() {
+  editingBlockId = null;
+  document.getElementById("blockNameInput").value = "";
+  document.getElementById("blockVarietyInput").value = "";
+  document.getElementById("blockFormTitle").textContent = "Add a block";
+  document.getElementById("blockSaveBtn").textContent = "+ Add block";
+  document.getElementById("blockCancelBtn").classList.add("hidden");
+}
+
+async function saveBlock() {
+  const name = document.getElementById("blockNameInput").value.trim();
+  const variety = document.getElementById("blockVarietyInput").value.trim();
+  if (!name) { document.getElementById("blockNameInput").focus(); return; }
+  const btn = document.getElementById("blockSaveBtn");
+  btn.disabled = true;
+  try {
+    await NB.api(editingBlockId ? `/api/blocks/${editingBlockId}` : "/api/blocks", {
+      method: editingBlockId ? "PUT" : "POST", body: { name, variety }, timeoutMs: 15000,
+    });
+    NB.toast(editingBlockId ? `Block ${name} saved` : `Block ${name} added`);
+    resetBlockForm();
+    loadBlocksCard();
+    // A rename changes the block shown on notes already on screen.
+    loadEntries();
+  } catch (e) {
+    if (e.status === 409) NB.toast("A block with that name already exists");
+    else if (e.status === 400) NB.toast("Block name is empty or too long");
+    else NB.toast("Could not save block - try again once online");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------
 // Entries list
 // ---------------------------------------------------------------------
 function entryCardHtml(e) {
@@ -566,7 +806,7 @@ function entryCardHtml(e) {
       ${photoThumb}
       <div class="flex-1 min-w-0">
         <div class="font-semibold text-sm truncate">${esc(e.title) || "(untitled)"}</div>
-        <div class="text-xs text-slate-500">${e.block ? esc(e.block) + " · " : ""}${NB.fmtDate(e.created_at)}</div>
+        <div class="text-xs text-slate-500">${e.block ? esc(blockLabel(e)) + " · " : ""}${NB.fmtDate(e.created_at)}</div>
         <div class="mt-1 flex flex-wrap gap-1">${tags}</div>
       </div>
     </button>`;
@@ -600,8 +840,10 @@ async function localUnsyncedAsEntries() {
   return (await IDB.getUnsyncedEntries()).map(localEntryAsServerShape);
 }
 
-function matchesFilters(entry, q, tag) {
+function matchesFilters(entry, q, tag, block, variety) {
   if (tag && !(entry.tags || []).includes(tag)) return false;
+  if (block && entry.block !== block) return false;
+  if (variety && varietyOf(entry.block) !== variety) return false;
   if (!q) return true;
   const needle = q.toLowerCase();
   return [entry.title, entry.body, entry.block]
@@ -611,12 +853,17 @@ function matchesFilters(entry, q, tag) {
 async function loadEntries() {
   const q = document.getElementById("searchInput").value.trim();
   const tag = document.getElementById("tagFilter").value;
+  const block = document.getElementById("blockFilter").value;
+  const variety = document.getElementById("varietyFilter").value;
+  const filtered = Boolean(q || tag || block || variety);
   let entries = [];
   let offline = false;
   try {
     const qs = new URLSearchParams();
     if (q) qs.set("q", q);
     if (tag) qs.set("tag", tag);
+    if (block) qs.set("block", block);
+    if (variety) qs.set("variety", variety);
     entries = await NB.api(`/api/entries?${qs.toString()}`);
   } catch (e) {
     handleApiError(e);
@@ -629,7 +876,7 @@ async function loadEntries() {
   // would rise from the dead every time the device went offline, and the
   // store would grow for the life of the device. Skipped when a search or tag
   // filter is on, where "missing from the results" only means "filtered out".
-  if (!offline && !q && !tag) {
+  if (!offline && !filtered) {
     const liveIds = new Set(entries.map((e) => e.id));
     for (const local of await IDB.getAllEntries()) {
       if (local.synced && !liveIds.has(local.id)) await IDB.deleteEntry(local.id);
@@ -648,7 +895,7 @@ async function loadEntries() {
   // same search and tag filter here or they'd ignore it.
   const serverIds = new Set(entries.map((e) => e.id));
   for (const entry of local) {
-    if (!serverIds.has(entry.id) && matchesFilters(entry, q, tag)) entries.push(entry);
+    if (!serverIds.has(entry.id) && matchesFilters(entry, q, tag, block, variety)) entries.push(entry);
   }
   entries.sort((a, b) => NB.serverTimeMs(b.created_at) - NB.serverTimeMs(a.created_at));
 
@@ -681,7 +928,7 @@ async function showEntryDetail(id) {
   document.getElementById("detailTitle").textContent = entry.title || "(untitled)";
   document.getElementById("detailMeta").textContent =
     `${NB.fmtDateTime(entry.created_at)}${entry.created_by ? " · " + entry.created_by : ""}`;
-  document.getElementById("detailBlock").textContent = entry.block ? `📍 ${entry.block}` : "";
+  document.getElementById("detailBlock").textContent = entry.block ? `📍 ${blockLabel(entry)}` : "";
   renderDetailContext(entry);
   document.getElementById("detailTags").innerHTML = entry.tags.map((t) => `<span class="tag-chip">${esc(t)}</span>`).join("");
   document.getElementById("detailBody").textContent = entry.body;
@@ -810,7 +1057,7 @@ async function runTidy() {
       body: {
         title: document.getElementById("entryTitle").value.trim(),
         body,
-        block: document.getElementById("entryBlock").value.trim(),
+        block: getCaptureBlock(),
         tags: currentTags,
       },
     });
@@ -1020,6 +1267,11 @@ function init() {
 
   document.getElementById("searchInput").addEventListener("keyup", loadEntries);
   document.getElementById("tagFilter").addEventListener("change", loadEntries);
+  document.getElementById("blockFilter").addEventListener("change", loadEntries);
+  document.getElementById("varietyFilter").addEventListener("change", loadEntries);
+  document.getElementById("entryBlockSelect").addEventListener("change", onBlockSelectChange);
+  document.getElementById("blockSaveBtn").addEventListener("click", saveBlock);
+  document.getElementById("blockCancelBtn").addEventListener("click", resetBlockForm);
 
   document.getElementById("closeDetailBtn").addEventListener("click", closeDetailModal);
   document.getElementById("editEntryBtn").addEventListener("click", () => currentDetailEntry && editEntry(currentDetailEntry));

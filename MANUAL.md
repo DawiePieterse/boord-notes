@@ -395,14 +395,17 @@ HEIC out of the album attaches just like a camera shot does.
 ### Capture
 
 - **Title** - short, e.g. "Irrigation pump quirk".
-- **Block / Location** (optional) - free text, e.g. "Block 4 North" or "near
-  the pump station".
+- **Block / Location** (optional) - once the farm's blocks are set up in
+  Settings (see [Blocks](#blocks-settings)), pick one from the list, grouped by
+  type. For a spot that isn't a block, pick **Somewhere else (type it)** and
+  type it, e.g. "near the pump station". Before any blocks are set up the
+  field is a plain text box.
 - **Notes** - the dictated (or typed) body of the entry.
-- **Tags** - type a word and tap **+ Add tag** (or press Enter) to add it;
-  add as many as fit the note. Existing tags are suggested as you type, and
-  a word that isn't a tag yet becomes a new one. Fully free-form - Andre can invent new tags any
-  time, there's no fixed list to pick from (a starter set is preloaded so
-  he isn't starting from nothing).
+- **Tags** - add as many as fit the note. Tap **Choose from existing tags**
+  to open the list and tap each one to add it; or type a word and tap
+  **+ Add tag** (or press Enter) - a word that isn't a tag yet becomes a new
+  one. Tap the &times; on a tag to take it off the note. A starter set is
+  preloaded so Andre isn't starting from nothing.
 - **Photos** - tap **Add Photo** to attach one or more.
 
 Tap **Save Note** - the entry is saved to the phone instantly and
@@ -417,8 +420,9 @@ the most recent entries.
 
 ### Entries
 
-Search by title, notes text, or block/location, and/or filter by a single
-tag. Tap any entry to open its full detail - photos, tags, block, and full
+Search by title, notes text, or block/location, and/or filter by a tag, a
+block, or a type (every block of that variety). The block and type filters
+appear once blocks are set up in Settings. Tap any entry to open its full detail - photos, tags, block, and full
 notes text.
 
 ### AI help: Tidy up and Ask (optional)
@@ -468,6 +472,27 @@ note can't be removed. At the foot of the card, type a name and tap
 the Capture screen's tag suggestions. A name that matches an existing tag
 (ignoring capitals) is refused, so "pruning" can't split off from "Pruning".
 Adding and removing need a connection to the server.
+
+### Blocks (Settings)
+
+The **Blocks** card in Settings is the farm's own block list, kept in this
+app (it is not read from Boord). Each block has a name and a type - the
+variety, e.g. "TMR" - and the type is what the Entries **type** filter and
+the grouping on the Capture picker use.
+
+- **Add** - type the name and type at the foot of the card and tap
+  **+ Add block**. A name that matches an existing block (ignoring capitals)
+  is refused.
+- **Edit** - fixes a name or type. A new name is carried onto every note
+  that used the old one, so nothing is left filed under the typo.
+- **Remove** - only offered on a block no note uses.
+- **On notes, but not on the list** - block names typed on notes before the
+  list existed (or spots like "near the pump station"). Tap
+  **+ Add to list** to put one on the list, filling in its type first.
+
+The block and tag lists are kept on each phone too, so the Capture screen's
+pickers still work with no signal. A block added in Settings reaches the
+other phones the next time they're connected.
 
 ### Editing and archiving
 
@@ -660,7 +685,9 @@ across after the fact; re-enter it from the installed app going forward.
 - `id` - a random ID generated on the phone at creation time (this is what
   makes offline sync safe to retry - resending the same entry twice never
   creates a duplicate).
-- `title`, `body` (the notes text), `block` (free text).
+- `title`, `body` (the notes text), `block` - the block's name as text,
+  normally picked from the block list, or any spot typed in. The block's type
+  is looked up from the list, not stored on the note.
 - `tags` - any number of free-form tags.
 - `photos` - any number of attached photos.
 - `created_by` / `created_at`, `updated_by` / `updated_at`.
@@ -681,6 +708,10 @@ coordinates and tonight's weather.
 ### Tag
 Just a `name` - created automatically the first time anyone uses it on an
 entry, shared across all entries.
+
+### Block
+`name` and `variety` (the type, may be blank). Kept in this app, not in
+Boord. Notes refer to a block by name.
 
 ### Photo
 `filename` (on the server, under `data\photos\`), `caption` (currently

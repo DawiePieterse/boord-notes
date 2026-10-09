@@ -34,6 +34,13 @@ body {
   background: #dcfce7; color: #166534;
 }
 .tag-chip button { color: #16653480; }
+/* A tag that can be tapped onto the note: same shape, not yet chosen. */
+.tag-chip-pick {
+  display: inline-flex; align-items: center;
+  font-size: 0.75rem; font-weight: 600;
+  padding: 0.3rem 0.75rem; border-radius: 999px;
+  background: #fff; color: #475569; border: 1px solid #cbd5e1;
+}
 
 .unsynced-badge {
   background: #fef3c7; color: #92400e; font-size: 0.7rem; font-weight: 600;

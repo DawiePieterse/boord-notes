@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from sqlmodel import Session, SQLModel, select
 
 from db import PHOTOS_DIR, get_session
-from models import Entry, EntryTagLink, Photo, Tag, User
+from models import Block, Entry, EntryTagLink, Photo, Tag, User
 
 router = APIRouter(prefix="/api/entries", tags=["entries"])
 
@@ -86,6 +86,7 @@ def _entries_out(session: Session, entries: list) -> list[dict]:
     creator_ids = {e.created_by_id for e in entries if e.created_by_id}
     creators = ({u.id: u for u in session.exec(select(User).where(User.id.in_(creator_ids))).all()}
                 if creator_ids else {})
+    varieties = _varieties(session)
     out = []
     for entry in entries:
         creator = creators.get(entry.created_by_id)
@@ -94,6 +95,8 @@ def _entries_out(session: Session, entries: list) -> list[dict]:
             "title": entry.title,
             "body": entry.body,
             "block": entry.block,
+            # From the block list, so it is blank for a spot that isn't on it.
+            "variety": varieties.get(entry.block, ""),
             "tags": sorted(tag_names.get(entry.id, [])),
             "created_at": entry.created_at,
             "updated_at": entry.updated_at,
@@ -111,14 +114,24 @@ def _entries_out(session: Session, entries: list) -> list[dict]:
     return out
 
 
+def _varieties(session: Session) -> dict:
+    """{block name: variety} for the blocks on the list."""
+    return {b.name: b.variety for b in session.exec(select(Block)).all()}
+
+
 def _entry_out(session: Session, entry: Entry) -> dict:
     return _entries_out(session, [entry])[0]
 
 
 @router.get("")
-def list_entries(q: str = "", tag: str = "", archived: bool = False,
-                  session: Session = Depends(get_session)):
+def list_entries(q: str = "", tag: str = "", block: str = "", variety: str = "",
+                  archived: bool = False, session: Session = Depends(get_session)):
     entries = session.exec(select(Entry).where(Entry.archived == archived)).all()
+    if block:
+        entries = [e for e in entries if e.block == block]
+    if variety:
+        names = {n for n, v in _varieties(session).items() if v == variety}
+        entries = [e for e in entries if e.block in names]
     # Filtered in Python, not SQL LIKE - SQLite's default LIKE collation is
     # ASCII-only case-insensitive and mishandles Afrikaans diacritics (ë, é)
     # that dictated notes will contain. Fine at this data scale.

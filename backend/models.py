@@ -24,6 +24,22 @@ class Tag(SQLModel, table=True):
     name: str = Field(unique=True, index=True)
 
 
+class Block(SQLModel, table=True):
+    """The farm's own list of blocks, kept in Notes - not read from the
+    harvest app, which stays independent (see Entry.block). Picking from the
+    list keeps one block under one spelling, so it can be filtered on.
+
+    An entry still records the block by NAME, as text: notes written before
+    the list existed, and spots like "near the pump station", keep working,
+    and a note captured offline needs nothing from the server to name its
+    block. Renaming a block renames it on its notes too (routers/blocks.py).
+    The variety is the block's crop type, e.g. "TMR" - it is looked up from
+    here, not stored on each note."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(unique=True, index=True)
+    variety: str = ""
+
+
 class EntryTagLink(SQLModel, table=True):
     entry_id: str = Field(foreign_key="entry.id", primary_key=True)
     tag_id: int = Field(foreign_key="tag.id", primary_key=True)
