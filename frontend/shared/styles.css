@@ -250,3 +250,6 @@ details[open] .disclosure { transform: rotate(90deg); }
 .hide-empty:empty { display: none; }
 /* Safari right-aligns a select's shown value only with text-align-last. */
 .select { text-align-last: right; }
+/* No hairline above a row whose only neighbour above is an empty, hidden one
+   (no tags or photos chosen yet). */
+.group > .hide-empty:empty + * { background-image: none; }

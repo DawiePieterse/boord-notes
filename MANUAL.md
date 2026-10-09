@@ -432,12 +432,12 @@ block, or a type (every block of that variety). The block and type filters
 appear once blocks are set up in Settings. Tap any entry to open its full detail - photos, tags, block, and full
 notes text.
 
-### AI help: Tidy up and Ask (optional)
+### AI Tidy up and Ask (optional)
 
 Two buttons that use Claude. They appear only once the server has an API
 key (below); without one the app looks and works exactly as before.
 
-- **Tidy up** (on Capture, under Notes) - adds punctuation and paragraphs to
+- **AI Tidy up** (on Capture, under Notes) - adds punctuation and paragraphs to
   dictated text, suggests a title, and suggests tags, preferring the ones
   already in use. It keeps Afrikaans as Afrikaans and is told not to add or
   drop facts. It only *proposes*: nothing changes until you tap **Use this**,

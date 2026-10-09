@@ -1023,7 +1023,7 @@ async function runTidy() {
     return;
   } finally {
     btn.disabled = false;
-    btn.textContent = "Tidy up";
+    btn.textContent = "AI Tidy up";
   }
   tidySuggestion = suggestion;
   document.getElementById("tidyTitle").textContent = suggestion.title;
