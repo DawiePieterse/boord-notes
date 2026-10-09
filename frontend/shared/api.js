@@ -10,7 +10,7 @@ const NB = {
   // it's obvious at a glance whether a device's cached copy is actually up
   // to date - the service worker revalidates in the background, so a device
   // picks up new code on its second load (see frontend/app/service-worker.js).
-  VERSION: "2.6",
+  VERSION: "2.7",
 
   // Left behind by the versions that had accounts. Cleared once on load so a
   // phone that used to sign in is not carrying a stale token and role around
@@ -74,11 +74,21 @@ const NB = {
       const text = await res.text().catch(() => "");
       const err = new Error(`${res.status} ${text}`);
       err.status = res.status;   // so callers can tell a server fault from an unreachable server
+      // FastAPI's {"detail": "..."} - the server's own sentence for what went
+      // wrong ("Tag already exists: Pruning"), worth showing as it is.
+      try { const d = JSON.parse(text).detail; if (typeof d === "string") err.detail = d; } catch (_) {}
       throw err;
     }
     const contentType = res.headers.get("content-type") || "";
     if (contentType.includes("application/json")) return res.json();
     return res.blob();
+  },
+
+  // One line for a failed request: offline, or the server's own reason when
+  // it gave one (a refused name, an AI outage), else the caller's fallback.
+  errorMessage(e, fallback) {
+    if (NB.isNetworkError(e)) return "Can't reach the server - try again when you have signal.";
+    return (e && e.detail) || fallback;
   },
 
   // The server records every timestamp in UTC (datetime.utcnow()), but SQLite

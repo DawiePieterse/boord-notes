@@ -45,18 +45,26 @@ def _validate_entry_id(entry_id: str) -> None:
 
 
 def _get_or_create_tags(session: Session, names: List[str]) -> List[Tag]:
-    tags = []
+    """The tags for a note, created as needed. A name typed in another case
+    joins the existing tag (names.py), so "pruning" typed on a note files it
+    under "Pruning" rather than starting a second tag. No length limit here:
+    this runs on the sync of a note captured offline, and a refusal would
+    leave that note stuck on the phone."""
+    existing = session.exec(select(Tag)).all()
+    by_lower = {t.name.lower(): t for t in existing}
+    tags: dict = {}
     for raw in names:
         name = raw.strip()
         if not name:
             continue
-        tag = session.exec(select(Tag).where(Tag.name == name)).first()
+        tag = by_lower.get(name.lower())
         if not tag:
             tag = Tag(name=name)
             session.add(tag)
             session.flush()
-        tags.append(tag)
-    return tags
+            by_lower[name.lower()] = tag
+        tags[tag.id] = tag
+    return list(tags.values())
 
 
 def _tag_names_by_entry(session: Session, entry_ids: list) -> dict:
@@ -126,12 +134,13 @@ def _entry_out(session: Session, entry: Entry) -> dict:
 @router.get("")
 def list_entries(q: str = "", tag: str = "", block: str = "", variety: str = "",
                   archived: bool = False, session: Session = Depends(get_session)):
-    entries = session.exec(select(Entry).where(Entry.archived == archived)).all()
+    query = select(Entry).where(Entry.archived == archived)
     if block:
-        entries = [e for e in entries if e.block == block]
+        query = query.where(Entry.block == block)
     if variety:
-        names = {n for n, v in _varieties(session).items() if v == variety}
-        entries = [e for e in entries if e.block in names]
+        query = query.where(Entry.block.in_(
+            [n for n, v in _varieties(session).items() if v == variety]))
+    entries = session.exec(query).all()
     # Filtered in Python, not SQL LIKE - SQLite's default LIKE collation is
     # ASCII-only case-insensitive and mishandles Afrikaans diacritics (ë, é)
     # that dictated notes will contain. Fine at this data scale.
@@ -139,9 +148,10 @@ def list_entries(q: str = "", tag: str = "", block: str = "", variety: str = "",
         needle = q.lower()
         entries = [e for e in entries if needle in e.title.lower() or needle in e.body.lower()
                    or needle in e.block.lower()]
-    results = _entries_out(session, entries)
     if tag:
-        results = [r for r in results if tag in r["tags"]]
+        tagged = _tag_names_by_entry(session, [e.id for e in entries])
+        entries = [e for e in entries if tag in tagged.get(e.id, [])]
+    results = _entries_out(session, entries)
     results.sort(key=lambda r: r["created_at"], reverse=True)
     return results
 
@@ -196,12 +206,8 @@ def upsert_entry(payload: EntryIn, session: Session = Depends(get_session)):
         existing.updated_at = now
         entry = existing
     else:
-        entry = Entry(id=payload.id, title=payload.title, body=payload.body, block=payload.block,
-                       created_at=payload.created_at or now,
-                       latitude=payload.latitude, longitude=payload.longitude,
-                       location_accuracy_m=payload.location_accuracy_m,
-                       weather_temp=payload.weather_temp, weather_humidity=payload.weather_humidity,
-                       weather_condition=payload.weather_condition)
+        entry = Entry(**payload.model_dump(exclude={"tags", "created_at"}),
+                      created_at=payload.created_at or now)
     session.add(entry)
     session.flush()
 

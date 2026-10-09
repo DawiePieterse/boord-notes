@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, SQLModel, func, select
 
 from db import get_session
+from names import clean_name, refuse_duplicate
 from models import Block, Entry
 
 router = APIRouter(prefix="/api/blocks", tags=["blocks"])
@@ -23,21 +24,15 @@ def _live_counts(session: Session) -> dict:
 
 
 def _clean(payload: BlockIn) -> BlockIn:
-    name, variety = payload.name.strip(), payload.variety.strip()
-    if not name:
-        raise HTTPException(400, "Block name is empty")
-    if len(name) > 60 or len(variety) > 60:
-        raise HTTPException(400, "Block name or type is too long")
-    return BlockIn(name=name, variety=variety)
+    return BlockIn(name=clean_name(payload.name, "Block name"),
+                   variety=clean_name(payload.variety, "Block type", required=False))
 
 
 def _refuse_duplicate(session: Session, name: str, except_id=None) -> None:
-    """Case-insensitive, compared in Python for the same diacritics reason as
-    the Entries search: "blok 4" beside "Blok 4" would split one block's notes
-    across two filters."""
-    for block in session.exec(select(Block)).all():
-        if block.id != except_id and block.name.lower() == name.lower():
-            raise HTTPException(409, f"Block already exists: {block.name}")
+    """Ignoring case - "blok 4" beside "Blok 4" would split one block's notes
+    across two filters (see names.py)."""
+    others = [b.name for b in session.exec(select(Block)).all() if b.id != except_id]
+    refuse_duplicate(others, name, "Block")
 
 
 @router.get("")

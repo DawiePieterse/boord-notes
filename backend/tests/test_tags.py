@@ -20,3 +20,12 @@ def test_create_tag_refuses_empty_and_overlong(client):
     assert client.post("/api/tags", json={"name": "   "}).status_code == 400
     assert client.post("/api/tags", json={"name": "x" * 61}).status_code == 400
     assert client.get("/api/tags").json() == []
+
+
+def test_note_tag_typed_in_another_case_joins_the_existing_tag(client):
+    add_tags("Pruning")
+    r = client.post("/api/entries", json={"id": "e1", "title": "Flush", "tags": ["pruning", "PRUNING", "Water"]})
+    assert r.status_code == 200
+    assert r.json()["tags"] == ["Pruning", "Water"]
+    assert [t["name"] for t in client.get("/api/tags").json()] == ["Pruning", "Water"]
+    assert [e["id"] for e in client.get("/api/entries?tag=Pruning").json()] == ["e1"]
