@@ -5,6 +5,8 @@ job. The nightly run is skipped if nothing has changed since the last
 backup. Backup files never include the app's source code (already in git),
 only the data that changes at runtime."""
 import os
+import sqlite3
+import tempfile
 import threading
 import time
 import zipfile
@@ -35,7 +37,14 @@ def create_backup() -> str:
     path = os.path.join(BACKUPS_DIR, filename)
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
         if os.path.exists(DB_PATH):
-            zf.write(DB_PATH, arcname="notebook.db")
+            # Never zip the live file: a note saved while the zip is being
+            # written would leave a copy SQLite can't open. The online backup
+            # API takes a consistent snapshot into a temp file first.
+            with tempfile.TemporaryDirectory() as tmp:
+                snapshot = os.path.join(tmp, "notebook.db")
+                with sqlite3.connect(DB_PATH) as src, sqlite3.connect(snapshot) as dst:
+                    src.backup(dst)
+                zf.write(snapshot, arcname="notebook.db")
         for root, _, files in os.walk(PHOTOS_DIR):
             for f in files:
                 full = os.path.join(root, f)

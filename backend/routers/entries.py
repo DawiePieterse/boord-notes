@@ -8,7 +8,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from sqlmodel import Session, SQLModel, select
 
-from db import PHOTOS_DIR, get_session
+from db import PHOTOS_DIR, get_session, utcnow
 from models import ActionType, Block, Entry, EntryAction, EntryTagLink, Photo, Tag, User
 
 router = APIRouter(prefix="/api/entries", tags=["entries"])
@@ -109,7 +109,7 @@ def _save_actions(session: Session, entry_id: str, actions: List[ActionIn]) -> N
         row.kind = action_kind(session, known, a.kind)
         row.detail = a.detail.strip()
         row.status = status
-        row.done_at = (a.done_at or row.done_at or datetime.utcnow()) if status == "done" else None
+        row.done_at = (a.done_at or row.done_at or utcnow()) if status == "done" else None
         row.done_note = a.done_note.strip() if status == "done" else ""
         session.add(row)
         keep.add(a.id)
@@ -231,7 +231,7 @@ def list_entries(q: str = "", tag: str = "", block: str = "", variety: str = "",
 @router.get("/stats")
 def entry_stats(session: Session = Depends(get_session)):
     entries = session.exec(select(Entry).where(Entry.archived == False)).all()  # noqa: E712
-    week_ago = datetime.utcnow() - timedelta(days=7)
+    week_ago = utcnow() - timedelta(days=7)
     with_photos_ids = set(session.exec(select(Photo.entry_id).distinct()).all())
     tag_names = _tag_names_by_entry(session, [e.id for e in entries])
     tag_counts: dict = {}
@@ -264,7 +264,7 @@ def upsert_entry(payload: EntryIn, session: Session = Depends(get_session)):
     convention. Idempotent: a retried sync POST for the same id just
     overwrites with the same data, safe on flaky rural signal."""
     _validate_entry_id(payload.id)
-    now = datetime.utcnow()
+    now = utcnow()
     existing = session.get(Entry, payload.id)
     if existing:
         # Where and under what conditions a note was captured describes a
@@ -316,7 +316,7 @@ def upload_photo(entry_id: str, file: UploadFile, caption: str = "",
     filename = f"{entry_id}-{uuid_lib.uuid4().hex[:8]}{ext}"
     with open(os.path.join(PHOTOS_DIR, filename), "wb") as f:
         shutil.copyfileobj(file.file, f)
-    photo = Photo(entry_id=entry_id, filename=filename, uploaded_at=datetime.utcnow(), caption=caption)
+    photo = Photo(entry_id=entry_id, filename=filename, uploaded_at=utcnow(), caption=caption)
     session.add(photo)
     session.commit()
     session.refresh(photo)

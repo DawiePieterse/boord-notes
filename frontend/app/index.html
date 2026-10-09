@@ -14,13 +14,15 @@
 <meta name="apple-mobile-web-app-title" content="Notes">
 <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<script src="../shared/tailwind.js"></script>
 <!-- Served from the farm server, not a CDN: the phones are tailnet-only and
      have no route to the public internet. See shared/fontawesome/fa-subset.css.
      Only the weather glyphs come from it now; every other icon is inline SVG
      below, so it can never render as a blank box. -->
 <link rel="stylesheet" href="../shared/fontawesome/fa-subset.css">
 <link rel="stylesheet" href="../shared/styles.css">
+<!-- Built from the classes this page uses (scripts/build_css.sh). Last, so
+     its utilities such as .hidden win over the display rules above. -->
+<link rel="stylesheet" href="../shared/tailwind.css">
 <script src="../shared/api.js"></script>
 <script src="idb.js"></script>
 </head>
