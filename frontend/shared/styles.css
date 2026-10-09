@@ -6,6 +6,7 @@
    this app's tint (buttons, links, the selected tab), so the three apps on
    the home screen still read as siblings. */
 :root {
+  color-scheme: light dark;
   --boord-blue: #0A2F6B;
   --boord-red: #C8102E;
   --boord-green: #16a34a;
@@ -24,6 +25,10 @@
   --green: #34C759;
   --orange: #FF9500;
   --bar: rgba(249, 249, 249, 0.86);
+  --sheet-bg: var(--bg);
+  --card-elevated: var(--card);
+  --gutter-l: max(16px, env(safe-area-inset-left));
+  --gutter-r: max(16px, env(safe-area-inset-right));
 }
 
 @media (prefers-color-scheme: dark) {
@@ -42,6 +47,9 @@
     --green: #30D158;
     --orange: #FF9F0A;
     --bar: rgba(22, 22, 24, 0.86);
+    /* Dark sheets sit a step lighter than the page, as iOS draws them. */
+    --sheet-bg: #1C1C1E;
+    --card-elevated: #2C2C2E;
   }
 }
 
@@ -60,7 +68,10 @@ body {
 }
 
 /* ---- Header: app name, sync state, large page title ------------------- */
-.nav { padding: 12px 20px 6px; max-width: 42rem; margin: 0 auto; }
+/* Header and page share one column, inset clear of a landscape notch. */
+.nav, .content { max-width: 42rem; margin: 0 auto; padding-left: var(--gutter-l); padding-right: var(--gutter-r); }
+.nav { padding-top: 12px; padding-bottom: 6px; }
+.content { padding-top: 8px; padding-bottom: 16px; }
 .nav-app { font-size: 13px; font-weight: 600; letter-spacing: 0.02em; color: var(--label-2); text-transform: uppercase; }
 .nav-title { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
 
@@ -83,7 +94,7 @@ body {
   border-top: 0.5px solid var(--separator);
 }
 .tab-btn {
-  flex: 1; max-width: 96px;
+  position: relative; flex: 1; max-width: 96px; min-height: 48px;
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   padding: 2px 0 4px; color: #8E8E93;
   font-size: 10px; font-weight: 500;
@@ -98,8 +109,10 @@ body {
 }
 .group-footer { font-size: 13px; color: var(--label-2); padding: 6px 16px 0; line-height: 1.35; }
 .group { background: var(--card); border-radius: 12px; overflow: hidden; }
-/* Hairline between rows, inset from the left like iOS lists. */
-.group > * + *, .group .row + .row {
+/* Hairline between rows, inset from the left like iOS lists - drawn only
+   after a sibling that is actually showing, so an empty or hidden first row
+   never leaves a stray line at the top. */
+.group > :not(.hidden, .hide-empty:empty, datalist) ~ *, .group .row + .row {
   background-image: linear-gradient(var(--separator), var(--separator));
   background-size: calc(100% - 16px) 0.5px; background-position: right top; background-repeat: no-repeat;
 }
@@ -107,12 +120,14 @@ body {
   display: flex; align-items: center; gap: 12px;
   min-height: 46px; padding: 10px 16px; width: 100%; text-align: left;
 }
-.row-label { flex: 1; min-width: 0; }
+.row-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .row-detail { color: var(--label-2); font-size: 15px; flex-shrink: 0; }
 .row-sub { color: var(--label-2); font-size: 15px; }
 .chevron { width: 14px; height: 14px; color: var(--label-3); flex-shrink: 0; }
 .row.tappable:active { background-color: var(--fill); }
 .empty { padding: 14px 16px; color: var(--label-2); font-size: 15px; }
+.text-2 { color: var(--label-2); }
+.text-3 { color: var(--label-3); }
 
 /* ---- Form fields -------------------------------------------------------- */
 .input, .select, .textarea {
@@ -121,15 +136,15 @@ body {
 }
 .input::placeholder, .textarea::placeholder { color: var(--label-3); }
 .textarea { resize: none; line-height: 1.4; }
-.select { -webkit-appearance: none; appearance: none; text-align: right; color: var(--label-2); }
+/* Safari right-aligns a select's shown value only with text-align-last. */
+.select { -webkit-appearance: none; appearance: none; text-align: right; text-align-last: right; color: var(--label-2); }
 .select-wrap { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; justify-content: flex-end; }
-/* A field that stands on its own, not inside a list row. */
-.field { background: var(--fill); border-radius: 10px; padding: 9px 12px; }
 
 .search {
   display: flex; align-items: center; gap: 6px;
   background: var(--fill); border-radius: 10px; padding: 8px 10px; color: var(--label-2);
 }
+.search:focus-within { box-shadow: 0 0 0 2px var(--tint); }
 .search svg { width: 17px; height: 17px; flex-shrink: 0; }
 
 /* A filter shown as a capsule menu, like iOS's filter buttons. */
@@ -137,7 +152,7 @@ body {
   -webkit-appearance: none; appearance: none;
   background: var(--fill) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238E8E93' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center / 12px;
   color: var(--label); border: 0; border-radius: 999px;
-  font-size: 15px; font-weight: 500; padding: 6px 28px 6px 14px; flex-shrink: 0;
+  font-size: 16px; font-weight: 500; min-height: 40px; padding: 6px 28px 6px 14px; flex-shrink: 0;
   max-width: 11rem; text-overflow: ellipsis;
 }
 .pill-select.on { background-color: var(--tint-soft); color: var(--tint); }
@@ -152,8 +167,14 @@ body {
 .btn:disabled { opacity: 0.45; }
 .btn-primary { background: var(--tint); color: var(--on-tint); }
 .btn-tinted { background: var(--tint-soft); color: var(--tint); }
-.btn-small { font-size: 15px; padding: 8px 14px; border-radius: 10px; }
+.btn-small { font-size: 15px; min-height: 40px; padding: 8px 14px; border-radius: 10px; }
 .link { color: var(--tint); font-weight: 500; }
+/* Text buttons at the end of a row: the words stay small, the tap area
+   doesn't - it reaches into the row's padding, so rows keep their height. */
+.row > button:is(.link, .link-red):not(.row) { min-height: 44px; margin: -10px 0; }
+#closeDetailBtn { min-height: 44px; }
+/* A bare glyph button (the x on an action row). */
+.icon-btn { min-width: 44px; min-height: 44px; margin: -10px -12px -10px 0; font-size: 22px; line-height: 1; }
 .link:active { opacity: 0.5; }
 .link-red { color: var(--red); font-weight: 500; }
 .link svg { width: 20px; height: 20px; }
@@ -165,9 +186,9 @@ body {
   background: var(--fill); color: var(--label);
 }
 .chip-on { background: var(--tint); color: var(--on-tint); }
-.chip-on button { opacity: 0.75; font-size: 17px; line-height: 1; margin-right: -4px; }
-/* The pick list holds every tag, so it is set smaller to fit two a line. */
-#tagPick .chip, #tidyTags .chip, #tidyActions .chip { font-size: 14px; padding: 5px 11px; }
+.chip-on button { opacity: 0.75; font-size: 17px; line-height: 1; padding: 6px 8px; margin: -6px -10px -6px -4px; }
+/* Pick lists can hold every tag, so they are set smaller to fit two a line. */
+.chip-compact { font-size: 14px; padding: 5px 11px; }
 .chip-sm { font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: var(--fill); color: var(--label-2); }
 
 /* ---- Photo thumbnails --------------------------------------------------- */
@@ -177,7 +198,10 @@ body {
   position: absolute; top: -6px; right: -6px; width: 24px; height: 24px; border-radius: 50%;
   background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 16px; line-height: 24px;
 }
+/* Small round controls keep their look but get a finger-sized hit area. */
+.thumb button::after, .check::after { content: ""; position: absolute; inset: -10px; }
 .list-thumb { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+.list-thumb-sm { width: 44px; height: 44px; }
 .list-thumb-empty {
   width: 52px; height: 52px; border-radius: 8px; flex-shrink: 0;
   background: var(--tint-soft); color: var(--tint);
@@ -208,25 +232,24 @@ body {
 
 /* ---- Sheets (entry detail, photo source) -------------------------------- */
 .overlay { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.4); align-items: flex-end; justify-content: center; }
+.overlay-top { z-index: 45; }   /* opened from on top of the detail sheet */
 .sheet {
-  background: var(--bg); width: 100%; max-width: 42rem;
-  border-radius: 14px 14px 0 0; max-height: 94vh; overflow-y: auto;
+  background: var(--sheet-bg); width: 100%; max-width: 42rem;
+  border-radius: 14px 14px 0 0; max-height: 94vh; max-height: 94dvh; overflow-y: auto;
+  overscroll-behavior: contain;
   padding-bottom: env(safe-area-inset-bottom);
   animation: sheet-up 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 .sheet-bar {
   position: sticky; top: 0; z-index: 1; display: flex; justify-content: flex-end; align-items: center;
-  padding: 8px 16px 6px; background: var(--bg);
+  padding: 4px 16px 0; background: var(--sheet-bg);
 }
+.sheet .group { background: var(--card-elevated); }
+#detailTitle, #detailBody { overflow-wrap: anywhere; }
 .grabber { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); width: 36px; height: 5px; border-radius: 3px; background: var(--label-3); }
 .action-sheet { width: 100%; max-width: 42rem; padding: 0 8px calc(8px + env(safe-area-inset-bottom)); animation: sheet-up 0.28s cubic-bezier(0.2, 0.9, 0.3, 1); }
 .action-sheet .group { border-radius: 14px; }
 .action-sheet .row { justify-content: center; font-size: 20px; color: var(--tint); min-height: 57px; }
-/* Dark sheets sit a step lighter than the page, as iOS draws them. */
-@media (prefers-color-scheme: dark) {
-  .sheet, .sheet-bar { background: #1C1C1E; }
-  .sheet .group { background: #2C2C2E; }
-}
 @keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
 /* ---- Toast -------------------------------------------------------------- */
@@ -248,16 +271,11 @@ details[open] .disclosure { transform: rotate(90deg); }
 .disclosure { transition: transform 0.2s; }
 
 .hide-empty:empty { display: none; }
-/* Safari right-aligns a select's shown value only with text-align-last. */
-.select { text-align-last: right; }
-/* No hairline above a row whose only neighbour above is an empty, hidden one
-   (no tags or photos chosen yet). */
-.group > .hide-empty:empty + * { background-image: none; }
 
 /* ---- Actions --------------------------------------------------------- */
 /* The round To do / Done tick, as in Reminders. */
 .check {
-  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+  position: relative; width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
   border: 1.6px solid var(--label-3);
   display: inline-flex; align-items: center; justify-content: center;
 }
@@ -267,9 +285,49 @@ details[open] .disclosure { transform: rotate(90deg); }
   border: solid #fff; border-width: 0 2.2px 2.2px 0; transform: rotate(45deg);
 }
 .chip-todo { background: color-mix(in srgb, var(--orange) 16%, transparent); color: var(--orange); }
-.tab-btn { position: relative; }
 .tab-badge {
   position: absolute; top: -3px; right: -10px; min-width: 18px; height: 18px; padding: 0 5px;
   border-radius: 9px; background: var(--red); color: #fff;
   font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
+}
+
+
+/* ---- Pointer devices: hover, keyboard focus, resizable notes ----------- */
+@media (hover: hover) {
+  .row.tappable:hover, .tab-btn:hover { background-color: var(--fill); }
+  .btn:hover { filter: brightness(1.08); }
+  .link:hover, .link-red:hover { opacity: 0.75; }
+  .chip:hover { filter: brightness(0.95); }
+  .textarea { resize: vertical; }
+}
+/* No border-radius here: the outline follows each control's own shape. */
+:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+.input:focus-visible, .textarea:focus-visible, .select:focus-visible { outline: none; }
+.group:focus-within { box-shadow: 0 0 0 2px var(--tint-soft); }
+
+/* ---- Desktop: the tab bar becomes a sidebar, sheets become dialogs ------ */
+/* hover:hover keeps a landscape phone on the bottom tab bar. */
+@media (min-width: 900px) and (hover: hover) {
+  body { padding-bottom: 32px; padding-left: 232px; }
+  .nav { padding-top: 28px; }
+  .tabbar {
+    top: 0; right: auto; width: 232px;
+    flex-direction: column; justify-content: flex-start; gap: 2px;
+    padding: 28px 12px; border-top: 0; border-right: 0.5px solid var(--separator);
+  }
+  .tab-btn {
+    flex: none; max-width: none; min-height: 40px; flex-direction: row; gap: 12px;
+    padding: 8px 12px; border-radius: 10px; font-size: 15px;
+  }
+  .tab-btn svg { width: 22px; height: 22px; }
+  .tab-btn.active { background: var(--tint-soft); }
+  .tab-badge { top: -6px; right: -8px; }
+  .toast { bottom: 32px; margin-left: 116px; }
+  .overlay { align-items: center; padding: 24px; }
+  .sheet { border-radius: 14px; max-height: 88vh; padding-bottom: 0; }
+  .action-sheet { max-width: 420px; padding: 0; }
+  .grabber { display: none; }
+}
+@media (min-width: 1200px) and (hover: hover) {
+  .nav, .content { max-width: 56rem; }
 }

@@ -38,17 +38,22 @@ const IDB = (() => {
     return db.transaction(store, mode).objectStore(store);
   }
 
+  // A read request's result, as a promise.
+  const result = (req) => new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+
   return {
     async addEntry(entry) {
       const store = await tx(ENTRIES, "readwrite");
       store.put(entry);
     },
+    async getEntry(id) {
+      return result((await tx(ENTRIES, "readonly")).get(id));
+    },
     async getAllEntries() {
-      const store = await tx(ENTRIES, "readonly");
-      return new Promise((resolve) => {
-        const req = store.getAll();
-        req.onsuccess = () => resolve(req.result);
-      });
+      return result((await tx(ENTRIES, "readonly")).getAll());
     },
     async getUnsyncedEntries() {
       const all = await this.getAllEntries();
@@ -65,38 +70,21 @@ const IDB = (() => {
     },
     async markEntrySynced(id) {
       const store = await tx(ENTRIES, "readwrite");
-      const getReq = store.get(id);
-      return new Promise((resolve) => {
-        getReq.onsuccess = () => {
-          const rec = getReq.result;
-          if (rec) { rec.synced = true; store.put(rec); }
-          resolve();
-        };
-      });
+      const rec = await result(store.get(id));
+      if (rec) { rec.synced = true; store.put(rec); }
     },
 
+    // A photo is deleted here as soon as it is uploaded, so every photo in
+    // this store is one still waiting to sync.
     async addPhoto(photo) {
       const store = await tx(PHOTOS, "readwrite");
       store.add(photo);
     },
     async getPhotosForEntry(entryId) {
-      const store = await tx(PHOTOS, "readonly");
-      return new Promise((resolve) => {
-        const idx = store.index("entry_id");
-        const req = idx.getAll(entryId);
-        req.onsuccess = () => resolve(req.result);
-      });
-    },
-    async getAllPhotos() {
-      const store = await tx(PHOTOS, "readonly");
-      return new Promise((resolve) => {
-        const req = store.getAll();
-        req.onsuccess = () => resolve(req.result);
-      });
+      return result((await tx(PHOTOS, "readonly")).index("entry_id").getAll(entryId));
     },
     async getUnsyncedPhotos() {
-      const all = await this.getAllPhotos();
-      return all.filter((p) => !p.synced);
+      return result((await tx(PHOTOS, "readonly")).getAll());
     },
     async deletePhoto(localId) {
       const store = await tx(PHOTOS, "readwrite");
@@ -104,8 +92,10 @@ const IDB = (() => {
     },
 
     async getUnsyncedCounts() {
-      const [entries, photos] = await Promise.all([this.getUnsyncedEntries(), this.getUnsyncedPhotos()]);
-      return { entries: entries.length, photos: photos.length };
+      const [entries, photos] = await Promise.all([
+        this.getUnsyncedEntries(), tx(PHOTOS, "readonly").then((s) => result(s.count())),
+      ]);
+      return { entries: entries.length, photos };
     },
   };
 })();
