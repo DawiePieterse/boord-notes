@@ -58,6 +58,9 @@
 
         <div>
           <label class="text-xs font-medium text-slate-500">Block / Location (optional)</label>
+          <!-- The picker appears once Settings has a block list; until then,
+               and for "Somewhere else", the text box is the whole field. -->
+          <select id="entryBlockSelect" class="hidden w-full border border-slate-300 rounded-lg p-2 bg-white"></select>
           <input id="entryBlock" class="w-full border border-slate-300 rounded-lg p-2" placeholder="e.g. Block 4 North, or near the pump station">
           <div class="flex items-center justify-between mt-2">
             <label for="gpsToggle" class="text-xs font-medium text-slate-500">Record GPS location</label>
@@ -100,8 +103,21 @@
         <div>
           <label class="text-xs font-medium text-slate-500 block mb-1">Tags</label>
           <div id="tagChips" class="flex flex-wrap gap-1.5 mb-2"></div>
-          <input id="tagInput" list="tagSuggestions" class="w-full border border-slate-300 rounded-lg p-2 text-sm" placeholder="Type a tag and press Enter">
+          <!-- A button as well as Enter: the iPhone keyboard's return key gives
+               no hint that it adds the tag, so new tags went unnoticed. -->
+          <div class="flex gap-2">
+            <input id="tagInput" list="tagSuggestions" class="flex-1 min-w-0 border border-slate-300 rounded-lg p-2 text-sm" placeholder="Type a tag, new or existing">
+            <button type="button" id="addTagBtn" class="shrink-0 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium">+ Add tag</button>
+          </div>
           <datalist id="tagSuggestions"></datalist>
+          <!-- Every tag not yet on this note, one tap each - the typed box
+               above is only needed for a tag that doesn't exist yet. -->
+          <!-- Folded by default: a dozen chips open would push Save Note off
+               the screen Andre uses one-handed in the orchard. -->
+          <details id="tagPickWrap" class="hidden mt-2">
+            <summary class="text-xs font-medium text-slate-500 py-1 cursor-pointer">Choose from existing tags</summary>
+            <div id="tagPick" class="flex flex-wrap gap-1.5 mt-1"></div>
+          </details>
         </div>
 
         <div>
@@ -158,11 +174,6 @@
         <div id="tagBreakdown" class="space-y-1.5 text-sm"></div>
       </div>
 
-      <div class="bg-white rounded-xl shadow p-4 hidden" id="unusedTagsCard">
-        <div class="font-semibold text-sm text-slate-600 mb-2">Unused tags</div>
-        <div id="unusedTagsList" class="space-y-1.5 text-sm"></div>
-      </div>
-
       <div class="bg-white rounded-xl shadow p-4">
         <div class="font-semibold text-sm text-slate-600 mb-2">Recent entries</div>
         <div id="recentEntries" class="space-y-2"></div>
@@ -175,6 +186,12 @@
         <input id="searchInput" class="flex-1 min-w-[140px] border border-slate-300 rounded-lg p-2 text-sm" placeholder="Search title, notes, block...">
         <select id="tagFilter" class="border border-slate-300 rounded-lg p-2 text-sm">
           <option value="">All tags</option>
+        </select>
+        <select id="blockFilter" class="hidden border border-slate-300 rounded-lg p-2 text-sm">
+          <option value="">All blocks</option>
+        </select>
+        <select id="varietyFilter" class="hidden border border-slate-300 rounded-lg p-2 text-sm">
+          <option value="">All types</option>
         </select>
       </div>
       <div id="entriesList" class="space-y-2"></div>
@@ -201,6 +218,44 @@
 
     <!-- SETTINGS -->
     <div id="page-settings" class="page hidden space-y-4">
+      <!-- Every tag, with how many live notes use it. Remove is offered only
+           on tags no note uses, matching what the server allows. -->
+      <div class="bg-white rounded-2xl shadow p-4 space-y-3" id="tagsCard">
+        <div class="text-lg font-bold">Tags</div>
+        <p class="text-xs text-slate-500">
+          Set up tags here before a note needs them. A tag can be removed once no note uses it.
+        </p>
+        <div id="tagsList" class="space-y-1.5 text-sm"></div>
+        <div class="flex gap-2 pt-3 border-t border-slate-100">
+          <input id="newTagInput" class="flex-1 min-w-0 border border-slate-300 rounded-lg p-2 text-sm" placeholder="New tag name" maxlength="60">
+          <button type="button" id="newTagBtn" class="shrink-0 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium">+ New tag</button>
+        </div>
+      </div>
+      <!-- The farm's block list, kept in Notes. Notes name their block as
+           text, so renaming here renames it on the notes too. -->
+      <div class="bg-white rounded-2xl shadow p-4 space-y-3" id="blocksCard">
+        <div class="text-lg font-bold">Blocks</div>
+        <p class="text-xs text-slate-500">
+          The blocks offered on the Capture screen, each with its type (variety). Entries can be filtered by either.
+        </p>
+        <div id="blocksList" class="space-y-1.5 text-sm"></div>
+        <div id="unlistedWrap" class="hidden pt-1">
+          <div class="text-xs font-medium text-slate-500 mb-1">On notes, but not on the list</div>
+          <div id="unlistedList" class="space-y-1.5 text-sm"></div>
+        </div>
+        <div class="pt-3 border-t border-slate-100 space-y-2">
+          <div class="text-xs font-medium text-slate-500" id="blockFormTitle">Add a block</div>
+          <div class="flex gap-2">
+            <input id="blockNameInput" class="flex-1 min-w-0 border border-slate-300 rounded-lg p-2 text-sm" placeholder="Block, e.g. 8a" maxlength="60">
+            <input id="blockVarietyInput" list="varietySuggestions" class="flex-1 min-w-0 border border-slate-300 rounded-lg p-2 text-sm" placeholder="Type, e.g. TMR" maxlength="60">
+            <datalist id="varietySuggestions"></datalist>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" id="blockCancelBtn" class="hidden flex-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm">Cancel</button>
+            <button type="button" id="blockSaveBtn" class="flex-1 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium">+ Add block</button>
+          </div>
+        </div>
+      </div>
       <div class="bg-white rounded-2xl shadow p-4 space-y-3" id="backupsCard">
         <div class="text-lg font-bold">Backups</div>
         <p class="text-xs text-slate-500">
