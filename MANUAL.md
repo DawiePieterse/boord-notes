@@ -392,8 +392,8 @@ HEIC out of the album attaches just like a camera shot does.
 
 ## 4. Using the App
 
-The app is laid out like an iPhone app: the tabs - **Capture**, **Dashboard**,
-**Entries**, **Ask** (only when AI help is on) and **Settings** - sit along the
+The app is laid out like an iPhone app: the tabs - **Capture**, **To do**,
+**Dashboard**, **Entries**, **Ask AI** (only when AI help is on) and **Settings** - sit along the
 bottom of the screen, and each screen's name is shown large at the top. It
 follows the phone's own light or dark setting. A note opened from a list
 slides up from the bottom; tap **Done**, or the dimmed area above it, to close
@@ -408,6 +408,11 @@ it.
   type it, e.g. "near the pump station". Before any blocks are set up the
   field is a plain text box.
 - **Notes** - the dictated (or typed) body of the entry.
+- **Actions** - what the note leads to: tap **+ Prune**, **+ Fertilise**,
+  **+ Water** and so on (or type another and tap **Add**), then say *with
+  what* if it matters, e.g. "LAN 200 g/tree". A note can have several. Each
+  starts as **To do** and goes on the To do list; tap its circle if it has
+  already been done. See [To do](#to-do).
 - **Tags** - add as many as fit the note. Tap **Choose from existing tags**
   to open the list and tap each one to add it; or type a word and tap
   **Add** (or press Enter) - a word that isn't a tag yet becomes a new
@@ -419,6 +424,21 @@ Tap **Save Note** - the entry is saved to the phone instantly and
 starts syncing to the server in the background (see
 [chapter 5](#5-how-offline-capture-works)).
 
+### To do
+
+Every action still waiting, grouped by block, longest-waiting first. The tab
+shows how many are open. Tap the circle to mark one done - there is a line to
+say what was actually used, if it differed from the plan - and it leaves the
+list. Tap the rest of the row to open its note, where all its actions are
+listed with when each was done.
+
+This is how an observation becomes work and then history: a photo of flush
+on 8a with *To do: Prune*; ticked off when the pruning is done; and the note
+then records that 8a was pruned, on which day.
+
+Marking done works with no signal: the tick is kept on the phone and reaches
+the server with the next sync, dated when it was ticked, not when it synced.
+
 ### Dashboard
 
 A quick at-a-glance view: total entries, entries this week, how many have
@@ -428,11 +448,15 @@ the most recent entries.
 ### Entries
 
 Search by title, notes text, or block/location, and/or filter by a tag, a
-block, or a type (every block of that variety). The block and type filters
+block, a type (every block of that variety), or an action. With an action
+chosen, each note also shows how that action stands - "✓ Fertilise with LAN ·
+21 Aug", or "○ to do" - so the action and block filters together give a
+block's history: choose **8a** and **Fertilise** to see every fertilising of
+8a, when it was done and with what. The block and type filters
 appear once blocks are set up in Settings. Tap any entry to open its full detail - photos, tags, block, and full
 notes text.
 
-### AI Tidy up and Ask (optional)
+### AI Tidy up and Ask AI (optional)
 
 Two buttons that use Claude. They appear only once the server has an API
 key (below); without one the app looks and works exactly as before.
@@ -443,7 +467,7 @@ key (below); without one the app looks and works exactly as before.
   drop facts. It only *proposes*: nothing changes until you tap **Use this**,
   and **Keep mine** discards it. Read it through first - it can still get a
   word wrong.
-- **Ask** (its own tab) - type a question in English or Afrikaans. The
+- **Ask AI** (its own tab) - type a question in English or Afrikaans. The
   answer is written from the saved notes only, and the notes it used are
   listed underneath; tap one to open it. If the notes don't cover the
   question it says so rather than guessing. Only notes already synced to
@@ -481,6 +505,14 @@ the Capture screen's tag suggestions. A name that matches an existing tag
 The same goes for tags typed on a note: "pruning" files the note under the
 existing "Pruning" tag rather than starting a second one.
 Adding and removing need a connection to the server.
+
+### Actions (Settings)
+
+The **Actions** card lists the action types offered on the Capture screen -
+Spray, Water, Fertilise, Prune, Pick and Scout to start with - with how many
+notes use each. Add one with **Add**; remove one once no note uses it. An
+action typed on a note that isn't on the list is added to it, and one typed
+in other capitals ("prune") files under the existing spelling.
 
 ### Blocks (Settings)
 
@@ -698,6 +730,7 @@ across after the fact; re-enter it from the installed app going forward.
   normally picked from the block list, or any spot typed in. The block's type
   is looked up from the list, not stored on the note.
 - `tags` - any number of free-form tags.
+- `actions` - any number of actions (see below).
 - `photos` - any number of attached photos.
 - `created_by` / `created_at`, `updated_by` / `updated_at`.
 - `archived` - true once soft-deleted; archived entries are hidden from
@@ -717,6 +750,14 @@ coordinates and tonight's weather.
 ### Tag
 Just a `name` - created automatically the first time anyone uses it on an
 entry, shared across all entries.
+
+### Action
+On a note: `kind` (Prune, Fertilise...), `detail` (with what, free text),
+`status` (to do or done), `done_at` (the phone's time when it was ticked off)
+and `done_note` (what was actually used, if it differed). Its id is made on
+the phone, like a note's, so an action added or ticked off offline syncs
+without duplicating. The action types themselves are a list of names, like
+tags.
 
 ### Block
 `name` and `variety` (the type, may be blank). Kept in this app, not in

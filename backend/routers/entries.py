@@ -9,9 +9,18 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from sqlmodel import Session, SQLModel, select
 
 from db import PHOTOS_DIR, get_session
-from models import Block, Entry, EntryTagLink, Photo, Tag, User
+from models import ActionType, Block, Entry, EntryAction, EntryTagLink, Photo, Tag, User
 
 router = APIRouter(prefix="/api/entries", tags=["entries"])
+
+
+class ActionIn(SQLModel):
+    id: str
+    kind: str
+    detail: str = ""
+    status: str = "todo"
+    done_at: Optional[datetime] = None
+    done_note: str = ""
 
 
 class EntryIn(SQLModel):
@@ -20,6 +29,7 @@ class EntryIn(SQLModel):
     body: str = ""
     block: str = ""
     tags: List[str] = []
+    actions: List[ActionIn] = []
     created_at: Optional[datetime] = None
     # Captured on the phone at the moment the note was written, not derived
     # here - see the note on Entry in models.py for why they can't be filled
@@ -67,6 +77,59 @@ def _get_or_create_tags(session: Session, names: List[str]) -> List[Tag]:
     return list(tags.values())
 
 
+def action_kind(session: Session, raw: str) -> str:
+    """The action type's existing spelling, ignoring case, or a new type -
+    the same rule as tags, so "prune" typed on a note files under "Prune"."""
+    name = raw.strip()
+    for t in session.exec(select(ActionType)).all():
+        if t.name.lower() == name.lower():
+            return t.name
+    session.add(ActionType(name=name))
+    session.flush()
+    return name
+
+
+def _save_actions(session: Session, entry_id: str, actions: List[ActionIn]) -> None:
+    """The note's actions become exactly the ones sent - like its tags, the
+    phone always sends the whole list. Ids are the phone's own, so a resend
+    updates rather than duplicates. An action is stamped done when it first
+    arrives done without a time (the phone normally sends its own)."""
+    existing = {a.id: a for a in session.exec(select(EntryAction).where(EntryAction.entry_id == entry_id)).all()}
+    keep = set()
+    for a in actions:
+        _validate_entry_id(a.id)
+        if not a.kind.strip():
+            continue
+        status = "done" if a.status == "done" else "todo"
+        row = existing.get(a.id) or EntryAction(id=a.id, entry_id=entry_id, kind="")
+        if row.entry_id != entry_id:
+            continue  # an id belonging to another note is never moved
+        row.kind = action_kind(session, a.kind)
+        row.detail = a.detail.strip()
+        row.status = status
+        row.done_at = (a.done_at or row.done_at or datetime.utcnow()) if status == "done" else None
+        row.done_note = a.done_note.strip() if status == "done" else ""
+        session.add(row)
+        keep.add(a.id)
+    for action_id, row in existing.items():
+        if action_id not in keep:
+            session.delete(row)
+
+
+def actions_by_entry(session: Session, entry_ids: list) -> dict:
+    """{entry_id: [action dict, ...]} for many entries in one query."""
+    out: dict = {}
+    if entry_ids:
+        for a in session.exec(select(EntryAction).where(EntryAction.entry_id.in_(entry_ids))).all():
+            out.setdefault(a.entry_id, []).append(action_out(a))
+    return out
+
+
+def action_out(a: EntryAction) -> dict:
+    return {"id": a.id, "kind": a.kind, "detail": a.detail, "status": a.status,
+            "done_at": a.done_at, "done_note": a.done_note}
+
+
 def _tag_names_by_entry(session: Session, entry_ids: list) -> dict:
     """{entry_id: [tag name, ...]} for many entries in one query."""
     names: dict = {}
@@ -95,6 +158,7 @@ def _entries_out(session: Session, entries: list) -> list[dict]:
     creators = ({u.id: u for u in session.exec(select(User).where(User.id.in_(creator_ids))).all()}
                 if creator_ids else {})
     varieties = _varieties(session)
+    actions = actions_by_entry(session, ids)
     out = []
     for entry in entries:
         creator = creators.get(entry.created_by_id)
@@ -106,6 +170,8 @@ def _entries_out(session: Session, entries: list) -> list[dict]:
             # From the block list, so it is blank for a spot that isn't on it.
             "variety": varieties.get(entry.block, ""),
             "tags": sorted(tag_names.get(entry.id, [])),
+            # To do first, then done.
+            "actions": sorted(actions.get(entry.id, []), key=lambda a: a["status"] == "done"),
             "created_at": entry.created_at,
             "updated_at": entry.updated_at,
             "created_by": creator.display_name if creator else "",
@@ -132,9 +198,13 @@ def _entry_out(session: Session, entry: Entry) -> dict:
 
 
 @router.get("")
-def list_entries(q: str = "", tag: str = "", block: str = "", variety: str = "",
+def list_entries(q: str = "", tag: str = "", block: str = "", variety: str = "", action: str = "",
                   archived: bool = False, session: Session = Depends(get_session)):
     query = select(Entry).where(Entry.archived == archived)
+    if action:
+        # Notes with an action of that kind, to do or done - with the block
+        # filter this is a block's history: every fertilising of 8a.
+        query = query.where(Entry.id.in_(select(EntryAction.entry_id).where(EntryAction.kind == action)))
     if block:
         query = query.where(Entry.block == block)
     if variety:
@@ -206,7 +276,7 @@ def upsert_entry(payload: EntryIn, session: Session = Depends(get_session)):
         existing.updated_at = now
         entry = existing
     else:
-        entry = Entry(**payload.model_dump(exclude={"tags", "created_at"}),
+        entry = Entry(**payload.model_dump(exclude={"tags", "actions", "created_at"}),
                       created_at=payload.created_at or now)
     session.add(entry)
     session.flush()
@@ -215,6 +285,7 @@ def upsert_entry(payload: EntryIn, session: Session = Depends(get_session)):
         session.delete(link)
     for t in _get_or_create_tags(session, payload.tags):
         session.add(EntryTagLink(entry_id=entry.id, tag_id=t.id))
+    _save_actions(session, entry.id, payload.actions)
 
     session.commit()
     return _entry_out(session, entry)

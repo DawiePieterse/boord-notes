@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backup import start_backup_scheduler
 from db import PHOTOS_DIR, create_db_and_tables, seed_defaults
-from routers import ai as ai_router, backups, blocks, entries, tags, weather
+from routers import actions, ai as ai_router, backups, blocks, entries, tags, weather
 
 app = FastAPI(title="Boord Notes")
 
@@ -21,6 +21,7 @@ app.add_middleware(
 app.include_router(entries.router)
 app.include_router(tags.router)
 app.include_router(blocks.router)
+app.include_router(actions.router)
 app.include_router(backups.router)
 app.include_router(weather.router)
 app.include_router(ai_router.router)

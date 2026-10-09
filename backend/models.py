@@ -40,6 +40,28 @@ class Block(SQLModel, table=True):
     variety: str = ""
 
 
+class ActionType(SQLModel, table=True):
+    """The kinds of action a note can lead to - Prune, Fertilise, Water...
+    Like Tag: a starter set, then whatever Andre adds, kept to one spelling
+    each (names.py)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(unique=True, index=True)
+
+
+class EntryAction(SQLModel, table=True):
+    """Something a note says to do, or records as done: "Prune", "Fertilise
+    with LAN". A note can carry several. The id comes from the phone, like
+    Entry.id, so an action created or ticked off offline syncs without
+    duplicating. The kind is stored by name, as a note stores its block."""
+    id: str = Field(primary_key=True)
+    entry_id: str = Field(foreign_key="entry.id", index=True)
+    kind: str
+    detail: str = ""           # with what - free text, e.g. "Copper oxychloride 2 kg/ha"
+    status: str = "todo"       # "todo" or "done"
+    done_at: Optional[datetime] = None
+    done_note: str = ""        # what was actually used, if it differed
+
+
 class EntryTagLink(SQLModel, table=True):
     entry_id: str = Field(foreign_key="entry.id", primary_key=True)
     tag_id: int = Field(foreign_key="tag.id", primary_key=True)

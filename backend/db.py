@@ -3,7 +3,7 @@ import os
 from sqlalchemy import inspect, text
 from sqlmodel import SQLModel, Session, create_engine, select
 
-from models import Tag
+from models import ActionType, Tag
 
 # NB_DATA_DIR lets the tests (and a preview) point the app at a scratch
 # folder; a real install never sets it and gets ../data as before.
@@ -24,6 +24,11 @@ STARTER_TAGS = [
     "Block Maintenance", "Quality & Post-Harvest", "Safety & Incidents",
     "Ideas & Improvements", "General Observations",
 ]
+
+
+# The actions the farm team named first; more are added from the Capture
+# screen or Settings as they come up.
+STARTER_ACTIONS = ["Spray", "Water", "Fertilise", "Prune", "Pick", "Scout"]
 
 
 def _column_ddl(column, dialect) -> str:
@@ -74,11 +79,16 @@ def get_session():
 
 
 def seed_defaults() -> None:
-    """Starter tags only. No accounts are created: the app has no sign-in, and
+    """Starter tags and action types only. No accounts are created: the app has no sign-in, and
     reaching it over the tailnet is the whole of its access control."""
     with Session(engine) as session:
         if not session.exec(select(Tag)).first():
             for name in STARTER_TAGS:
                 session.add(Tag(name=name))
+        # Seeded separately: a notebook upgraded from before actions existed
+        # already has its tags, and still needs the starter actions.
+        if not session.exec(select(ActionType)).first():
+            for name in STARTER_ACTIONS:
+                session.add(ActionType(name=name))
 
         session.commit()

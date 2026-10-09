@@ -157,6 +157,14 @@ def entry_text(e: dict) -> str:
         lines.append(f'Block/location: {e["block"]}{variety}')
     if e.get("tags"):
         lines.append("Tags: " + ", ".join(e["tags"]))
+    if e.get("actions"):
+        def _action(a):
+            what = a["kind"] + (f' with {a["detail"]}' if a.get("detail") else "")
+            if a["status"] != "done":
+                return f"{what} (to do)"
+            used = f', used {a["done_note"]}' if a.get("done_note") else ""
+            return f'{what} (done {str(a.get("done_at") or "")[:10]}{used})'
+        lines.append("Actions: " + "; ".join(_action(a) for a in e["actions"]))
     if e.get("weather_condition") or e.get("weather_temp") is not None:
         bits = [e.get("weather_condition") or ""]
         if e.get("weather_temp") is not None:

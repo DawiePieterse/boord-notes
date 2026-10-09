@@ -100,6 +100,21 @@
       </div>
     </div>
 
+    <!-- What the note leads to. Each action is To do (it goes on the To do
+         tab) or already done - tap its circle to switch. -->
+    <div>
+      <div class="group-header">Actions</div>
+      <div class="group">
+        <div id="actionRows" class="hide-empty"></div>
+        <div id="actionKinds" class="row flex-wrap gap-2 hide-empty"></div>
+        <div class="row">
+          <input id="actionKindInput" class="input" placeholder="Another action, e.g. Mulch" maxlength="60">
+          <button type="button" id="addActionBtn" class="link shrink-0">Add</button>
+        </div>
+      </div>
+      <p class="group-footer">Tap what this note leads to. It goes on the To do list - tap its circle if it's already done.</p>
+    </div>
+
     <div>
       <div class="group-header">Tags</div>
       <div class="group">
@@ -154,6 +169,14 @@
     </div>
   </div>
 
+  <!-- TO DO: every action still waiting, by block, longest-waiting first -->
+  <div id="page-todo" class="page hidden space-y-6">
+    <div id="todoList" class="space-y-6"></div>
+    <div id="todoEmpty" class="hidden text-center py-16 px-6" style="color: var(--label-2)">
+      Nothing to do.<br><span class="text-[15px]">Actions added to a note show up here until they're marked done.</span>
+    </div>
+  </div>
+
   <!-- DASHBOARD -->
   <div id="page-dashboard" class="page hidden space-y-6">
     <div class="grid grid-cols-2 gap-3">
@@ -183,6 +206,7 @@
         <select id="tagFilter" class="pill-select"><option value="">All tags</option></select>
         <select id="blockFilter" class="pill-select hidden"><option value="">All blocks</option></select>
         <select id="varietyFilter" class="pill-select hidden"><option value="">All types</option></select>
+        <select id="actionFilter" class="pill-select hidden"><option value="">All actions</option></select>
       </div>
     </div>
     <div id="entriesList" class="group hide-empty"></div>
@@ -197,7 +221,7 @@
       </div>
       <p class="group-footer">Ask in English or Afrikaans. Answers come only from the notes saved to the server, with the notes they used listed below.</p>
     </div>
-    <button id="askBtn" class="btn btn-primary w-full">Ask</button>
+    <button id="askBtn" class="btn btn-primary w-full">Ask AI</button>
     <div id="askResult" class="hidden space-y-6">
       <div class="group"><div id="askAnswer" class="row whitespace-pre-wrap leading-relaxed"></div></div>
       <div id="askSourcesWrap" class="hidden">
@@ -222,6 +246,18 @@
         </div>
       </div>
       <p class="group-footer">Set up tags before a note needs them. A tag can be removed once no note uses it.</p>
+    </div>
+
+    <div>
+      <div class="group-header">Actions</div>
+      <div class="group">
+        <div id="actionTypesList"></div>
+        <div class="row">
+          <input id="newActionTypeInput" class="input" placeholder="New action" maxlength="60">
+          <button type="button" id="newActionTypeBtn" class="link shrink-0">Add</button>
+        </div>
+      </div>
+      <p class="group-footer">The actions offered on the Capture screen. One can be removed once no note uses it.</p>
     </div>
 
     <!-- The farm's block list, kept in Notes. Notes name their block as
@@ -267,6 +303,13 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
     Capture
   </button>
+  <button class="tab-btn" data-tab="todo">
+    <span class="relative">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.7 2.7L16.5 9.5"/></svg>
+      <span id="todoBadge" class="tab-badge hidden"></span>
+    </span>
+    To do
+  </button>
   <button class="tab-btn" data-tab="dashboard">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M6 16v-5"/><path d="M11 16V6"/><path d="M16 16v-8"/><path d="M21 16v-3"/></svg>
     Dashboard
@@ -277,7 +320,7 @@
   </button>
   <button class="tab-btn hidden" data-tab="ask" id="tabAsk">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.2A8.38 8.38 0 0 1 12 3a8.38 8.38 0 0 1 9 8.5Z"/></svg>
-    Ask
+    Ask AI
   </button>
   <button class="tab-btn" data-tab="settings">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg>
@@ -300,6 +343,21 @@
   </div>
 </div>
 
+<!-- Marking an action done: an optional line for what was actually used -->
+<div id="doneSheet" class="overlay hidden" style="z-index: 45">
+  <div class="action-sheet space-y-2">
+    <div class="group">
+      <div class="row flex-col gap-0" style="min-height: 64px">
+        <span class="text-[13px]" style="color: var(--label-2)">Mark as done</span>
+        <span id="doneWhat" class="text-[17px] font-semibold text-center" style="color: var(--label)"></span>
+      </div>
+      <label class="row"><input id="doneNote" class="input text-center" placeholder="What was used, if different (optional)" maxlength="200"></label>
+      <button type="button" id="doneConfirmBtn" class="row tappable font-semibold">Mark Done</button>
+    </div>
+    <div class="group"><button type="button" id="doneCancelBtn" class="row tappable">Cancel</button></div>
+  </div>
+</div>
+
 <!-- Entry detail, as a sheet from the bottom -->
 <div id="detailModal" class="overlay hidden">
   <div class="sheet">
@@ -318,6 +376,7 @@
       <div id="detailBlock" class="font-medium hide-empty"></div>
       <div id="detailContext" class="hidden row-sub"></div>
       <div id="detailTags" class="flex flex-wrap gap-2 hide-empty"></div>
+      <div id="detailTodo" class="group hide-empty"></div>
       <div id="detailBody" class="leading-relaxed whitespace-pre-wrap"></div>
       <div id="detailPhotos" class="grid grid-cols-2 gap-2 hide-empty"></div>
       <div id="detailActions" class="group">
