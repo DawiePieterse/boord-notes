@@ -198,9 +198,13 @@ def _entry_out(session: Session, entry: Entry) -> dict:
 
 
 @router.get("")
-def list_entries(q: str = "", tag: str = "", block: str = "", variety: str = "",
+def list_entries(q: str = "", tag: str = "", block: str = "", variety: str = "", action: str = "",
                   archived: bool = False, session: Session = Depends(get_session)):
     query = select(Entry).where(Entry.archived == archived)
+    if action:
+        # Notes with an action of that kind, to do or done - with the block
+        # filter this is a block's history: every fertilising of 8a.
+        query = query.where(Entry.id.in_(select(EntryAction.entry_id).where(EntryAction.kind == action)))
     if block:
         query = query.where(Entry.block == block)
     if variety:

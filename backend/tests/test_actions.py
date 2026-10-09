@@ -78,3 +78,15 @@ def test_ask_sees_actions(client):
                                 "done_note": "2 hours"}])
     text = ai.entry_text(out)
     assert "Actions: Fertilise with LAN (to do); Water (done 2026-10-09, used 2 hours)" in text
+
+
+def test_entries_filter_by_action_with_block(client):
+    client.post("/api/blocks", json={"name": "8a", "variety": "TMR"})
+    _note(client, "e1", [{"id": "a1", "kind": "Fertilise", "status": "done", "done_at": "2026-09-01T08:00:00"}], block="8a")
+    _note(client, "e2", [{"id": "a2", "kind": "Fertilise"}], block="12")
+    _note(client, "e3", [{"id": "a3", "kind": "Prune"}], block="8a")
+    _note(client, "e4", [], block="8a")
+    ids = lambda qs: sorted(e["id"] for e in client.get(f"/api/entries?{qs}").json())  # noqa: E731
+    assert ids("action=Fertilise") == ["e1", "e2"]
+    assert ids("action=Fertilise&block=8a") == ["e1"]
+    assert ids("action=Water") == []

@@ -448,7 +448,11 @@ the most recent entries.
 ### Entries
 
 Search by title, notes text, or block/location, and/or filter by a tag, a
-block, or a type (every block of that variety). The block and type filters
+block, a type (every block of that variety), or an action. With an action
+chosen, each note also shows how that action stands - "✓ Fertilise with LAN ·
+21 Aug", or "○ to do" - so the action and block filters together give a
+block's history: choose **8a** and **Fertilise** to see every fertilising of
+8a, when it was done and with what. The block and type filters
 appear once blocks are set up in Settings. Tap any entry to open its full detail - photos, tags, block, and full
 notes text.
 

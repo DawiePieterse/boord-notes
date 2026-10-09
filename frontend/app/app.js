@@ -156,6 +156,7 @@ async function loadActionTypes() {
   if (JSON.stringify(data) !== JSON.stringify(allActionTypes)) {
     allActionTypes = data;
     renderActionKinds();
+    fillSelect("actionFilter", "All actions", allActionTypes.map((t) => [t.name, t.name]));
   }
   return allActionTypes;
 }
@@ -681,7 +682,7 @@ async function loadDashboard() {
   document.getElementById("tagBreakdown").innerHTML = merged.tag_breakdown.map(([name, count]) =>
     `<div class="row"><span class="row-label">${esc(name)}</span><span class="row-detail">${count}</span></div>`
   ).join("") || `<div class="empty">No tags used yet</div>`;
-  document.getElementById("recentEntries").innerHTML = merged.recent.map(entryCardHtml).join("") ||
+  document.getElementById("recentEntries").innerHTML = merged.recent.map((e) => entryCardHtml(e)).join("") ||
     `<div class="empty">No notes yet</div>`;
 }
 
@@ -845,7 +846,19 @@ const NOTE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 
 // One note as a list row. Opening it is handled for every list at once, by a
 // single listener on the document for .entry-card (see init()).
-function entryCardHtml(e) {
+// With the action filter on, a card also says how that action stands on the
+// note - "✓ Fertilise with LAN · 9 Oct" - so the list reads as the history.
+function actionStateHtml(e, kind) {
+  const queued = new Map(doneQueue().map((u) => [u.action_id, u]));
+  return (e.actions || []).filter((a) => a.kind === kind).map((a) => {
+    const done = a.status === "done" ? a : queued.get(a.id);
+    return `<span class="block text-[15px] leading-snug mt-0.5" style="color: ${done ? "var(--green)" : "var(--orange)"}">`
+      + `${done ? "✓" : "○"} ${esc(actionText(a))} · ${done ? NB.fmtDate(done.done_at) : "to do"}`
+      + `${done && done.done_note ? ` · ${esc(done.done_note)}` : ""}</span>`;
+  }).join("");
+}
+
+function entryCardHtml(e, actionKind = "") {
   const thumb = e.photos.length
     ? `<img src="${esc(photoUrl(e.photos[0].filename))}" class="list-thumb" alt="">`
     : `<div class="list-thumb-empty">${NOTE_ICON}</div>`;
@@ -859,6 +872,7 @@ function entryCardHtml(e) {
       <span class="row-label">
         <span class="block font-semibold truncate">${esc(e.title) || "(untitled)"}</span>
         <span class="block row-sub truncate">${e.block ? esc(blockLabel(e)) + " · " : ""}${NB.fmtDate(e.created_at)}</span>
+        ${actionKind ? actionStateHtml(e, actionKind) : ""}
         ${tags || unsynced ? `<span class="flex flex-wrap gap-1 mt-1">${unsynced}${tags}</span>` : ""}
       </span>
       <span class="self-center">${CHEVRON}</span>
@@ -894,7 +908,8 @@ async function localEntries(offline) {
   return (await IDB.getAllEntries()).filter((e) => offline || !e.synced).map(localEntryAsServerShape);
 }
 
-function matchesFilters(entry, q, tag, block, variety) {
+function matchesFilters(entry, q, tag, block, variety, action) {
+  if (action && !(entry.actions || []).some((a) => a.kind === action)) return false;
   if (tag && !(entry.tags || []).includes(tag)) return false;
   if (block && entry.block !== block) return false;
   if (variety && varietyOf(entry.block) !== variety) return false;
@@ -909,7 +924,8 @@ async function loadEntries() {
   const tag = document.getElementById("tagFilter").value;
   const block = document.getElementById("blockFilter").value;
   const variety = document.getElementById("varietyFilter").value;
-  const filtered = Boolean(q || tag || block || variety);
+  const action = document.getElementById("actionFilter").value;
+  const filtered = Boolean(q || tag || block || variety || action);
   let entries = [];
   let offline = false;
   try {
@@ -918,6 +934,7 @@ async function loadEntries() {
     if (tag) qs.set("tag", tag);
     if (block) qs.set("block", block);
     if (variety) qs.set("variety", variety);
+    if (action) qs.set("action", action);
     entries = await NB.api(`/api/entries?${qs.toString()}`);
   } catch (e) {
     offline = true;
@@ -946,11 +963,11 @@ async function loadEntries() {
   // same search and tag filter here or they'd ignore it.
   const serverIds = new Set(entries.map((e) => e.id));
   for (const entry of local) {
-    if (!serverIds.has(entry.id) && matchesFilters(entry, q, tag, block, variety)) entries.push(entry);
+    if (!serverIds.has(entry.id) && matchesFilters(entry, q, tag, block, variety, action)) entries.push(entry);
   }
   entries.sort(byNewest);
 
-  document.getElementById("entriesList").innerHTML = entries.map(entryCardHtml).join("");
+  document.getElementById("entriesList").innerHTML = entries.map((e) => entryCardHtml(e, action)).join("");
   document.getElementById("entriesEmpty").textContent = filtered ? "No notes match." : "No notes yet.";
   document.getElementById("entriesEmpty").classList.toggle("hidden", entries.length > 0);
 }
@@ -1513,7 +1530,7 @@ function init() {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(loadEntries, 300);
   });
-  ["tagFilter", "blockFilter", "varietyFilter"].forEach((id) => {
+  ["tagFilter", "blockFilter", "varietyFilter", "actionFilter"].forEach((id) => {
     document.getElementById(id).addEventListener("change", (e) => {
       e.target.classList.toggle("on", !!e.target.value);
       loadEntries();
