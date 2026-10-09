@@ -959,6 +959,12 @@ function init() {
   document.getElementById("tagInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); addTagFromInput(); }
   });
+  document.getElementById("addTagBtn").addEventListener("click", () => {
+    addTagFromInput();
+    // Back into the box, so the next tag can be typed straight away - and a
+    // tap with the box still empty shows where the name goes.
+    document.getElementById("tagInput").focus();
+  });
   document.getElementById("addPhotoBtn").addEventListener("click", openPhotoSourceSheet);
   document.getElementById("photoSourceCancel").addEventListener("click", closePhotoSourceSheet);
   document.getElementById("photoSourceSheet").addEventListener("click", (e) => {

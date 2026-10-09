@@ -100,7 +100,12 @@
         <div>
           <label class="text-xs font-medium text-slate-500 block mb-1">Tags</label>
           <div id="tagChips" class="flex flex-wrap gap-1.5 mb-2"></div>
-          <input id="tagInput" list="tagSuggestions" class="w-full border border-slate-300 rounded-lg p-2 text-sm" placeholder="Type a tag and press Enter">
+          <!-- A button as well as Enter: the iPhone keyboard's return key gives
+               no hint that it adds the tag, so new tags went unnoticed. -->
+          <div class="flex gap-2">
+            <input id="tagInput" list="tagSuggestions" class="flex-1 min-w-0 border border-slate-300 rounded-lg p-2 text-sm" placeholder="Type a tag, new or existing">
+            <button type="button" id="addTagBtn" class="shrink-0 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium">+ Add tag</button>
+          </div>
           <datalist id="tagSuggestions"></datalist>
         </div>
 

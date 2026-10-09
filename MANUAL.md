@@ -398,8 +398,9 @@ HEIC out of the album attaches just like a camera shot does.
 - **Block / Location** (optional) - free text, e.g. "Block 4 North" or "near
   the pump station".
 - **Notes** - the dictated (or typed) body of the entry.
-- **Tags** - type a word and press Enter to add it as a tag; existing tags
-  are suggested as you type. Fully free-form - Andre can invent new tags any
+- **Tags** - type a word and tap **+ Add tag** (or press Enter) to add it;
+  add as many as fit the note. Existing tags are suggested as you type, and
+  a word that isn't a tag yet becomes a new one. Fully free-form - Andre can invent new tags any
   time, there's no fixed list to pick from (a starter set is preloaded so
   he isn't starting from nothing).
 - **Photos** - tap **Add Photo** to attach one or more.
