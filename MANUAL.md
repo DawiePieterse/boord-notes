@@ -415,13 +415,6 @@ A quick at-a-glance view: total entries, entries this week, how many have
 photos, how many tags are in use, a breakdown of entry counts per tag, and
 the most recent entries.
 
-The **Unused tags** card lists tags no note uses yet, each with a Remove
-button. At its foot, type a name and tap **+ New tag** to set up a tag
-before any note needs it - it then appears in the Capture screen's tag
-suggestions. A name that matches an existing tag (ignoring capitals) is
-refused, so "pruning" can't split off from "Pruning". Adding needs a
-connection to the server.
-
 ### Entries
 
 Search by title, notes text, or block/location, and/or filter by a single
@@ -465,6 +458,16 @@ across both buttons, default 100 - because there is no sign-in, this caps
 what a stray device could spend; it resets at midnight and on restart).
 The AI code has tests that run without a key or a connection: in `backend`,
 `pip install -r requirements-dev.txt` once, then `python -m pytest`.
+
+### Tags (Settings)
+
+The **Tags** card at the top of Settings lists every tag with how many notes
+use it. A tag no note uses has a **Remove** button instead; a tag still on a
+note can't be removed. At the foot of the card, type a name and tap
+**+ New tag** to set up a tag before any note needs it - it then appears in
+the Capture screen's tag suggestions. A name that matches an existing tag
+(ignoring capitals) is refused, so "pruning" can't split off from "Pruning".
+Adding and removing need a connection to the server.
 
 ### Editing and archiving
 

@@ -13,7 +13,7 @@ def _live_use_count(session: Session, tag_id: int) -> int:
     Archived entries are excluded deliberately: the count is shown next to
     each tag in the Entries filter, and counting notes that were archived
     made a tag advertise results it would never return. It also kept
-    archived-only tags off the Dashboard's "Unused tags" card, so a tag left
+    archived-only tags from being removable in Settings, so a tag left
     behind by an archived note could never be tidied away."""
     return session.exec(
         select(func.count())
@@ -45,7 +45,7 @@ class TagIn(SQLModel):
 
 @router.post("")
 def create_tag(payload: TagIn, session: Session = Depends(get_session)):
-    """Add a tag before any note uses it, from the Dashboard - so a set of
+    """Add a tag before any note uses it, from Settings - so a set of
     tags can be laid out up front instead of only ever appearing while a
     note is being written.
 

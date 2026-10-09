@@ -163,17 +163,6 @@
         <div id="tagBreakdown" class="space-y-1.5 text-sm"></div>
       </div>
 
-      <div class="bg-white rounded-xl shadow p-4 hidden" id="unusedTagsCard">
-        <div class="font-semibold text-sm text-slate-600 mb-2">Unused tags</div>
-        <div id="unusedTagsList" class="space-y-1.5 text-sm"></div>
-        <!-- Lay out tags before any note needs them. A new tag lands in the
-             list above until a note uses it. -->
-        <div class="flex gap-2 mt-3 pt-3 border-t border-slate-100">
-          <input id="newTagInput" class="flex-1 min-w-0 border border-slate-300 rounded-lg p-2 text-sm" placeholder="New tag name" maxlength="60">
-          <button type="button" id="newTagBtn" class="shrink-0 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium">+ New tag</button>
-        </div>
-      </div>
-
       <div class="bg-white rounded-xl shadow p-4">
         <div class="font-semibold text-sm text-slate-600 mb-2">Recent entries</div>
         <div id="recentEntries" class="space-y-2"></div>
@@ -212,6 +201,19 @@
 
     <!-- SETTINGS -->
     <div id="page-settings" class="page hidden space-y-4">
+      <!-- Every tag, with how many live notes use it. Remove is offered only
+           on tags no note uses, matching what the server allows. -->
+      <div class="bg-white rounded-2xl shadow p-4 space-y-3" id="tagsCard">
+        <div class="text-lg font-bold">Tags</div>
+        <p class="text-xs text-slate-500">
+          Set up tags here before a note needs them. A tag can be removed once no note uses it.
+        </p>
+        <div id="tagsList" class="space-y-1.5 text-sm"></div>
+        <div class="flex gap-2 pt-3 border-t border-slate-100">
+          <input id="newTagInput" class="flex-1 min-w-0 border border-slate-300 rounded-lg p-2 text-sm" placeholder="New tag name" maxlength="60">
+          <button type="button" id="newTagBtn" class="shrink-0 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium">+ New tag</button>
+        </div>
+      </div>
       <div class="bg-white rounded-2xl shadow p-4 space-y-3" id="backupsCard">
         <div class="text-lg font-bold">Backups</div>
         <p class="text-xs text-slate-500">

@@ -45,7 +45,7 @@ function showPage(name) {
   document.querySelectorAll(".tab-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === name));
   if (name === "dashboard") loadDashboard();
   if (name === "entries") loadEntries();
-  if (name === "settings") loadBackups();
+  if (name === "settings") { loadTagsCard(); loadBackups(); }
   // Start hunting for a GPS fix as soon as the capture screen opens, so one is
   // usually ready by the time he's finished dictating.
   if (name === "capture") {
@@ -475,8 +475,6 @@ async function loadDashboard() {
   document.getElementById("recentEntries").innerHTML = merged.recent.map(entryCardHtml).join("") ||
     `<div class="text-slate-400">No entries yet</div>`;
   bindEntryCards("#recentEntries");
-
-  loadUnusedTags();
 }
 
 // Folds this device's unsynced entries into the server's figures. Entries the
@@ -509,33 +507,33 @@ function mergeStatsWithLocal(stats, localEntries) {
   };
 }
 
-async function loadUnusedTags() {
-  const card = document.getElementById("unusedTagsCard");
+async function loadTagsCard() {
   let tags;
   try {
     tags = await NB.api("/api/tags");
   } catch (e) { handleApiError(e); return; } // offline - leave whatever was last shown
-  const unused = tags.filter((t) => t.count === 0);
-  // Shown even with nothing unused: the card is also where new tags are added.
-  card.classList.remove("hidden");
-  document.getElementById("unusedTagsList").innerHTML = unused.map((t) => `
-    <div class="flex justify-between items-center">
+  // Remove only on unused tags: the server refuses to delete one a live note
+  // still uses, so offering it there would only ever fail.
+  document.getElementById("tagsList").innerHTML = tags.map((t) => `
+    <div class="flex justify-between items-center gap-2">
       <span>${esc(t.name)}</span>
-      <button type="button" data-tag="${esc(t.name)}" class="delete-tag text-red-600 text-xs font-medium">Remove</button>
+      ${t.count === 0
+        ? `<button type="button" data-tag="${esc(t.name)}" class="delete-tag text-red-600 text-xs font-medium">Remove</button>`
+        : `<span class="text-slate-400 text-xs">${t.count} ${t.count === 1 ? "note" : "notes"}</span>`}
     </div>
-  `).join("") || `<div class="text-slate-400">Every tag is in use</div>`;
-  document.querySelectorAll(".delete-tag").forEach((btn) => {
+  `).join("") || `<div class="text-slate-400">No tags yet</div>`;
+  document.querySelectorAll("#tagsList .delete-tag").forEach((btn) => {
     btn.addEventListener("click", async () => {
       try {
         await NB.api(`/api/tags/${encodeURIComponent(btn.dataset.tag)}`, { method: "DELETE" });
-        loadUnusedTags();
+        loadTagsCard();
         loadTagSuggestions();
       } catch (e) { NB.toast("Could not remove tag - try again once online"); }
     });
   });
 }
 
-async function createTagFromDashboard() {
+async function createTag() {
   const input = document.getElementById("newTagInput");
   const name = input.value.trim();
   if (!name) { input.focus(); return; }
@@ -545,7 +543,7 @@ async function createTagFromDashboard() {
     await NB.api("/api/tags", { method: "POST", body: { name }, timeoutMs: 15000 });
     input.value = "";
     NB.toast(`Tag "${name}" added`);
-    loadUnusedTags();
+    loadTagsCard();
     loadTagSuggestions();
   } catch (e) {
     if (e.status === 409) NB.toast("That tag already exists");
@@ -987,9 +985,9 @@ function init() {
     // tap with the box still empty shows where the name goes.
     document.getElementById("tagInput").focus();
   });
-  document.getElementById("newTagBtn").addEventListener("click", createTagFromDashboard);
+  document.getElementById("newTagBtn").addEventListener("click", createTag);
   document.getElementById("newTagInput").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); createTagFromDashboard(); }
+    if (e.key === "Enter") { e.preventDefault(); createTag(); }
   });
   document.getElementById("addPhotoBtn").addEventListener("click", openPhotoSourceSheet);
   document.getElementById("photoSourceCancel").addEventListener("click", closePhotoSourceSheet);
