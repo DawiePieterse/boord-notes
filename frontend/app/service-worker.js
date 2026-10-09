@@ -4,7 +4,7 @@
 // installable/offline. See idb.js/app.js for the actual offline-capture and
 // sync logic.
 const CACHE_PREFIX = "nb-app-";
-const CACHE = "nb-app-v18";
+const CACHE = "nb-app-v19";
 const REVALIDATE_TIMEOUT_MS = 10000;
 const SHELL = [
   "./",
@@ -14,7 +14,7 @@ const SHELL = [
   "./manifest.json",
   "../shared/styles.css",
   "../shared/api.js",
-  "../shared/tailwind.js",
+  "../shared/tailwind.css",
   // The icon font and its stylesheet. Both have to be listed: the font is
   // only ever requested by the CSS, so without it here the icons would be
   // missing offline in exactly the way vendoring them was meant to fix.

@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 
 from sqlalchemy import inspect, text
 from sqlmodel import SQLModel, Session, create_engine, select
@@ -15,6 +16,13 @@ DB_PATH = os.path.join(DATA_DIR, "notebook.db")
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+
+
+def utcnow() -> datetime:
+    """Now in UTC, without a timezone marker - every timestamp in the
+    notebook is stored that way (SQLite keeps no zone), and the app pins
+    them back to UTC when it reads them. datetime.utcnow() is deprecated."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 # Starter tag suggestions so Andre isn't starting from a completely blank
 # list - free-form after this, he can add/drop tags as he actually uses them.
@@ -47,7 +55,8 @@ def _column_ddl(column, dialect) -> str:
 
 
 def _add_missing_columns() -> None:
-    """Bring an existing database up to the current models.
+    """Bring an existing database up to the current models, columns and
+    indexes.
 
     create_all() only ever creates whole tables, so a notebook upgraded in
     place would keep its old columns and every query touching a new field
@@ -66,6 +75,10 @@ def _add_missing_columns() -> None:
                 conn.execute(text(
                     f'ALTER TABLE "{table.name}" ADD COLUMN {_column_ddl(column, engine.dialect)}'))
             print(f"[migration] {table.name}: added column {column.name}")
+        present_indexes = {i["name"] for i in inspector.get_indexes(table.name)}
+        for index in [i for i in table.indexes if i.name not in present_indexes]:
+            index.create(engine)
+            print(f"[migration] {table.name}: added index {index.name}")
 
 
 def create_db_and_tables() -> None:

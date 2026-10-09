@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, SQLModel, func, select
 
-from db import get_session
+from db import get_session, utcnow
 from models import ActionType, Entry, EntryAction, Photo
 from names import clean_name, refuse_duplicate
 from routers.entries import _varieties, action_out
@@ -103,7 +103,7 @@ def update_action(action_id: str, payload: ActionUpdate, session: Session = Depe
         raise HTTPException(404, "Action not found")
     if payload.status == "done":
         action.status = "done"
-        action.done_at = payload.done_at or datetime.utcnow()
+        action.done_at = payload.done_at or utcnow()
         action.done_note = payload.done_note.strip()
     else:
         action.status, action.done_at, action.done_note = "todo", None, ""

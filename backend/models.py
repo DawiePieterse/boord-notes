@@ -64,7 +64,7 @@ class EntryAction(SQLModel, table=True):
 
 class EntryTagLink(SQLModel, table=True):
     entry_id: str = Field(foreign_key="entry.id", primary_key=True)
-    tag_id: int = Field(foreign_key="tag.id", primary_key=True)
+    tag_id: int = Field(foreign_key="tag.id", primary_key=True, index=True)
 
 
 class Entry(SQLModel, table=True):
@@ -79,10 +79,10 @@ class Entry(SQLModel, table=True):
     # this is just a naming convention for cross-reference.
     # Set only on entries captured while the app had accounts; None since.
     created_by_id: Optional[int] = Field(default=None, foreign_key="user.id")
-    created_at: datetime
+    created_at: datetime = Field(index=True)
     updated_at: Optional[datetime] = None
     updated_by_id: Optional[int] = Field(default=None, foreign_key="user.id")
-    archived: bool = False  # soft delete - mirrors Worker.active/Block.active.
+    archived: bool = Field(default=False, index=True)  # soft delete - mirrors Worker.active/Block.active.
     # A fat-fingered delete on hard-won farm knowledge must be recoverable.
 
     # Where Andre was standing when he captured the note, from the phone's own
@@ -104,7 +104,7 @@ class Entry(SQLModel, table=True):
 
 class Photo(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    entry_id: str = Field(foreign_key="entry.id")
+    entry_id: str = Field(foreign_key="entry.id", index=True)
     filename: str
     uploaded_at: datetime
     caption: str = ""
