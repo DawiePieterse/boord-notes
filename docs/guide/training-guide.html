@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Boord Notes Training Guide</title>
+<!-- Source of Boord_Notes_Training_Guide.pdf. Rebuild with docs/guide/build.sh
+     after editing; screenshots are in img/. -->
+<style>
+  @page {
+    size: A4;
+    margin: 22mm 20mm 20mm;
+    @bottom-center {
+      content: "Boord Notes Training Guide · page " counter(page);
+      font-family: Georgia, "DejaVu Serif", serif; font-size: 8pt; color: #7a8591;
+    }
+  }
+  @page :first { @bottom-center { content: none; } }
+
+  body { font-family: Helvetica, "Liberation Sans", Arial, sans-serif; font-size: 10pt; line-height: 1.5; color: #1f2933; }
+  h1 { font-size: 26pt; color: #0b6aa2; margin: 0 0 14pt; }
+  h2 { font-size: 15pt; color: #0b6aa2; border-bottom: 1.5pt solid #5bc0eb; padding-bottom: 4pt; margin: 22pt 0 10pt; page-break-after: avoid; }
+  h3 { font-size: 11pt; color: #3d4a57; margin: 14pt 0 6pt; page-break-after: avoid; }
+  p { margin: 0 0 8pt; }
+  ul, ol { margin: 0 0 10pt; padding-left: 18pt; }
+  li { margin-bottom: 3pt; }
+  ul.checklist { list-style: none; padding-left: 4pt; }
+  ul.checklist li::before { content: "☐  "; color: #3d4a57; }
+
+  .cover { page: cover; height: 240mm; display: flex; flex-direction: column; justify-content: center; page-break-after: always; }
+  .cover .sub { font-weight: bold; color: #3d4a57; margin-bottom: 18pt; }
+  .cover p { color: #3d4a57; font-size: 10.5pt; margin: 0 0 4pt; }
+  .cover .version { margin-top: 18pt; font-size: 9pt; color: #7a8591; }
+
+  .tip { background: #e6f4fb; border-left: 3pt solid #0b6aa2; padding: 8pt 10pt; margin: 10pt 0 12pt; border-radius: 2pt; page-break-inside: avoid; }
+  .new { display: inline-block; font-size: 7.5pt; font-weight: bold; color: #fff; background: #0b6aa2; border-radius: 6pt; padding: 0 5pt; vertical-align: 1pt; }
+
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 12pt; font-size: 9.5pt; page-break-inside: avoid; }
+  th { text-align: left; background: #eef2f5; color: #3d4a57; padding: 5pt 7pt; }
+  td { padding: 5pt 7pt; border-bottom: 0.5pt solid #d5dde3; vertical-align: top; }
+  td:first-child { width: 32%; font-weight: bold; }
+
+  .shots { width: 100%; margin: 6pt 0 12pt; page-break-inside: avoid; }
+  .shots td { border: 0; padding: 0 6pt 0 0; width: auto; font-weight: normal; vertical-align: top; text-align: center; }
+  .shots img { width: 48mm; border: 0.5pt solid #c9d3db; border-radius: 6pt; }
+  .cap { font-size: 8pt; color: #5b6772; margin-top: 3pt; line-height: 1.3; text-align: center; }
+  .side { width: 100%; page-break-inside: avoid; }
+  .side td { border: 0; padding: 0; font-weight: normal; }
+  .side td.pic { width: 58mm; padding-left: 10pt; text-align: center; }
+  .side img { width: 54mm; border: 0.5pt solid #c9d3db; border-radius: 6pt; }
+  .side td:first-child { width: auto; }
+  .side table td:first-child { font-weight: bold; width: 28%; }
+  b { color: #111; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>Boord Notes</h1>
+  <div class="sub">Training Guide</div>
+  <p>How to capture, find and act on farm knowledge on your iPhone.</p>
+  <p>For Andre and his son.</p>
+  <p class="version">For app version 2.9 · October 2026</p>
+</div>
+
+<h2>1. What Boord Notes is for</h2>
+<p>Boord Notes is a private notebook for farm knowledge: how a job is done, what an odd piece of equipment does, what you saw in a block and what it needs. Anything worth handing on goes in, so it is all in one place later.</p>
+<ul>
+  <li><b>Speak or type.</b> Dictate with the microphone on your iPhone keyboard, in Afrikaans or English. The app stores only the text, never any audio.</li>
+  <li><b>From what you see to what gets done.</b> A note can carry <b>actions</b> - prune, fertilise with LAN, water more, pick. They go on the <b>To do</b> list until someone ticks them off, and the note then records when it was done.</li>
+  <li><b>Works without signal.</b> A note saves on the phone first and reaches the server by itself once there is signal again.</li>
+  <li><b>No sign-in.</b> The app opens straight onto the Capture screen. Anyone who can reach it can read, edit and archive notes, so keep the phone in the right hands.</li>
+</ul>
+<p>A note holds a title, the notes text, a block (or any other spot), any number of actions, tags and photos. It also records where you were and the weather when you first saved it.</p>
+
+<h2>2. Setting up the phone (once)</h2>
+<div class="tip"><b>Install to the Home Screen before you capture anything.</b> Notes written in a Safari tab are stored separately from the installed app and will look as if they have vanished. Install first, then always open the app from its icon.</div>
+<ol>
+  <li>Make sure the <b>Tailscale</b> app is installed and signed in on the phone.</li>
+  <li>Open the farm's address in Safari: <b>https://&lt;server&gt;.&lt;tailnet&gt;.ts.net:9443/app/</b> (ask whoever set up the server for the exact link).</li>
+  <li>Tap <b>Share</b> (square with an arrow), then <b>Add to Home Screen</b>.</li>
+  <li>From now on open <b>Notes</b> from its Home Screen icon (Boord crate with a sky-blue leaf).</li>
+  <li>When asked, allow <b>Location</b> and <b>Camera</b> access.</li>
+</ol>
+<div class="tip">Both of you use the same link. There is one address and no accounts.</div>
+<p><b>Once, for the farm:</b> add the blocks in <b>Settings → Blocks</b> (section 7). Until then the Block field on a note is a plain text box.</p>
+
+<h2>3. Capturing a note</h2>
+<p>The app looks and works like an iPhone app. The tabs along the bottom are <b>Capture</b>, <b>To do</b>, <b>Dashboard</b>, <b>Entries</b>, <b>Ask AI</b> (only when AI help is switched on) and <b>Settings</b>. The app opens on Capture. It follows the phone's own light or dark setting.</p>
+<table class="side"><tr><td>
+<ol>
+  <li><b>Title.</b> Keep it short, e.g. "Flush on 8b".</li>
+  <li><b>Block.</b> Tap it and pick from the farm's blocks, grouped by type (e.g. TMR: 8a, 8b). For anywhere else choose <b>Somewhere else…</b> and type it, e.g. "near the pump station".</li>
+  <li><b>Notes.</b> Tap the field, then tap the <b>microphone key</b> next to the space bar and speak. Tap <b>Done</b> to stop, then read it over and fix any mistakes. If AI help is on, <b>AI Tidy up</b> can clean it up for you (section 6).</li>
+  <li><b>Actions</b> <span class="new">NEW</span>. What does this note lead to? Tap <b>+ Prune</b>, <b>+ Fertilise</b>, <b>+ Water</b> and so on, then type <i>with what</i> if it matters, e.g. "LAN 100 g/boom". Add as many as needed. Each one goes on the To do list. If it has <b>already been done</b>, tap its circle so it shows a green tick.</li>
+  <li><b>Tags.</b> Tap <b>Choose from existing tags</b> and tap each one that fits, or type a new one and tap <b>Add</b>.</li>
+  <li><b>Photos.</b> Tap <b>Add Photo</b> and choose <b>Camera</b>, <b>Photo Library</b> or <b>Files</b>. Photos are shrunk on the phone so they send quickly.</li>
+  <li>Tap <b>Save Note</b>.</li>
+</ol>
+</td><td class="pic"><img src="img/capture-top.jpg"><div class="cap">A note with two actions to do</div></td></tr></table>
+
+<h3>Good notes lead to actions</h3>
+<p>Write down what you see, and then what it means for the block. A few examples:</p>
+<table>
+  <tr><th>You see</th><th>Action on the note</th></tr>
+  <tr><td>New flush on the trees</td><td>Prune - To do</td></tr>
+  <tr><td>Fruit at a stage that needs feeding</td><td>Fertilise with LAN 200 g/tree - To do</td></tr>
+  <tr><td>TMR litchis that look ready</td><td>Pick - To do</td></tr>
+  <tr><td>Leaf colour shows stress</td><td>Water, extra 2 hours - To do (and maybe Fertilise if it is the soil)</td></tr>
+  <tr><td>"I sprayed 8a this morning"</td><td>Spray with … - tap the circle: already done</td></tr>
+</table>
+
+<h3>Location and weather</h3>
+<p>The line under <b>Record location</b> says whether a GPS fix is ready ("Location ready" or "No location available"). Saving never waits for it. The <b>Record location</b> switch turns this off if you do not want it.</p>
+<ul>
+  <li>Location works with no signal. Weather does not, and is left blank rather than filled in later.</li>
+  <li>Both are recorded once, when the note is first created. Editing later does not change them.</li>
+</ul>
+<div class="tip"><b>Tip for dictation in Afrikaans.</b> Add both keyboards in Settings → General → Keyboard → Keyboards. Dictation follows the keyboard that is active, so switch with the globe key.</div>
+
+<h2>4. The To do list <span class="new">NEW</span></h2>
+<p>The <b>To do</b> tab lists every action still waiting, grouped by block, with the ones that have waited longest at the top. The red number on the tab is how many are open. Tap the rest of a row to open its note.</p>
+<table class="shots"><tr>
+  <td><img src="img/todo.jpg"><div class="cap">Open actions by block</div></td>
+  <td><img src="img/done-sheet.jpg"><div class="cap">Marking one done</div></td>
+</tr></table>
+<p><b>When the job is done:</b> tap the circle next to it. A small panel asks <i>What was used, if different</i> - fill it in if the plan changed (e.g. "used MAP instead"), or leave it empty. Tap <b>Mark Done</b>. The action leaves the list and the note now shows it done, with the date.</p>
+<p>You can also tick actions off from inside a note. Ticking off works without signal too - it is sent with the next sync, dated when you ticked it.</p>
+
+<h2>5. Finding and reviewing notes</h2>
+<h3>Entries</h3>
+<p>Search by title, notes text or block. Below the search are filter buttons: <b>tag</b>, <b>block</b>, <b>type</b> (every block of that variety) and <b>action</b>. A note with open actions shows "2 to do" on its card.</p>
+<table class="side"><tr><td>
+<p><b>A block's history.</b> Choose a block and an action together - say <b>8a</b> and <b>Fertilise</b> - to see every fertilising of 8a. Each note then shows how that action stands: a green tick with the date it was done and anything noted, or "to do".</p>
+<p><b>Opening a note.</b> Tap it. It slides up from the bottom with its block, actions, tags, notes and photos. Tap <b>Done</b> (top right) or the dimmed area above it to close it. Tap the coordinates to open the spot in your map app, handy for walking back to a particular tree.</p>
+</td><td class="pic"><img src="img/history.jpg"><div class="cap">8a + Fertilise: the block's history</div></td></tr></table>
+
+<h3>Dashboard</h3>
+<p>A quick summary: total notes, notes this week, how many have photos, tags in use, a count per tag, and the latest notes.</p>
+
+<h3>Editing and archiving</h3>
+<table class="side"><tr><td>
+<table>
+  <tr><th>Button</th><th>What it does</th></tr>
+  <tr><td>Edit Note</td><td>Reopens the note in the Capture form with everything filled in, actions included. Location and weather stay as first recorded.</td></tr>
+  <tr><td>Archive Note</td><td>Hides the note from lists, search and the To do list. Nothing is erased, but the app has no restore button, so use it only for real mistakes.</td></tr>
+</table>
+</td><td class="pic"><img src="img/detail.jpg"><div class="cap">A note: one action to do, one done</div></td></tr></table>
+
+<h2>6. AI help (optional)</h2>
+<p>These two buttons appear only once the server has been given an AI key, and they need signal. Without them, everything else works exactly the same.</p>
+<ul>
+  <li><b>AI Tidy up</b> (under Notes on Capture) adds punctuation and paragraphs to dictated text and suggests a title, tags and <b>actions</b> - "ons gaan die blok meer natlei" becomes <i>+ Water</i>. It keeps Afrikaans as Afrikaans and does not add facts. Nothing changes until you tap <b>Use this</b> for the text, or tap a suggested tag or action to add it. <b>Keep mine</b> throws the suggestion away.</li>
+  <li><b>Ask AI</b> (its own tab) answers questions from the saved notes only, in English or Afrikaans - for example "When did we last fertilise 8a?" - and lists the notes it used.</li>
+</ul>
+<div class="tip">Always read an AI suggestion before using it. It can still get a word wrong, and it only knows what is in the notes.</div>
+
+<h2>7. Settings</h2>
+<table>
+  <tr><th>Card</th><th>What it is for</th></tr>
+  <tr><td>Tags</td><td>Every tag with how many notes use it. Add new ones with <b>Add</b>. <b>Remove</b> appears only on tags no note uses.</td></tr>
+  <tr><td>Actions <span class="new">NEW</span></td><td>The actions offered on Capture: Spray, Water, Fertilise, Prune, Pick, Scout to start with. Add others (e.g. Mulch) here or straight from a note.</td></tr>
+  <tr><td>Blocks</td><td>The farm's blocks, each with its type (variety, e.g. TMR). Type the name and type, then <b>Add Block</b>. <b>Edit</b> fixes a name or type, and a new name moves onto all its notes. Block names typed on older notes are listed under <b>On notes, but not on the list</b> - tap <b>Add to List</b>.</td></tr>
+  <tr><td>Backups</td><td>Make a backup now and download earlier ones (section 9).</td></tr>
+</table>
+<p>"pruning" and "Pruning" count as the same name everywhere, so a tag, action or block cannot be split in two by a capital letter.</p>
+
+<h2>8. Working without signal</h2>
+<p>Every save goes onto the phone first, so it always works. In the background the app then sends notes to the server, and only afterwards their photos. It tries again about every 10 seconds and straight away when signal returns. You do nothing.</p>
+<ul>
+  <li>The block, tag and action lists are kept on the phone, so the pickers work out in the orchard.</li>
+  <li>Actions ticked off without signal are sent with the next sync, dated when you ticked them.</li>
+  <li>A badge such as "2 not yet synced" shows at the top while notes wait. It normally clears on its own.</li>
+  <li><b>Do not leave unsynced notes for days.</b> If the app sits unused for about a week, iOS can clear its storage and anything not yet synced is lost. After a run of offline notes, open the app somewhere with signal.</li>
+</ul>
+
+<h2>9. Backups</h2>
+<p>The server makes a full backup (notes and photos) every night at 02:00 and keeps the latest 14. It is skipped if the PC is off at that time.</p>
+<p>To make one yourself: <b>Settings → Backups → Back Up Now</b>. The button shows "Backing up..." until done. Each backup in the list has a <b>Download</b> link.</p>
+<table>
+  <tr><th>Message</th><th>Meaning</th></tr>
+  <tr><td>Backup created</td><td>Done. The new backup is at the top of the list.</td></tr>
+  <tr><td>Backup failed - can't reach the server</td><td>Check Tailscale and that the server is running.</td></tr>
+  <tr><td>Backup failed on the server (500)</td><td>The server was reached but the backup failed, most often a full disk. Ask whoever looks after the PC.</td></tr>
+  <tr><td>Backup timed out</td><td>It may still be finishing. Wait a minute and check the list before trying again.</td></tr>
+</table>
+<div class="tip">Now and then, copy the latest backup off the server (cloud drive or USB stick). Backups on the same PC do not protect against that PC's disk failing.</div>
+
+<h2>10. When something goes wrong</h2>
+<table>
+  <tr><th>Problem</th><th>What to do</th></tr>
+  <tr><td>"Not yet synced" will not clear</td><td>Swipe the app away in the app switcher and reopen it from its icon. If it persists, check Tailscale is connected and the address loads in Safari.</td></tr>
+  <tr><td>Block is a plain text box, not a list</td><td>No blocks have been set up yet. Add them in Settings → Blocks, with signal.</td></tr>
+  <tr><td>An action ticked off still shows on the other phone</td><td>The tick reaches the server with the next sync. Open the app with signal on the phone that ticked it.</td></tr>
+  <tr><td>AI Tidy up or Ask AI is missing</td><td>The server has no AI key yet, or the app has not checked since. Both also need signal.</td></tr>
+  <tr><td>Add Photo does nothing, or Camera fails</td><td>Open the app from the Home Screen icon on the https address. As a fallback, take the photo in the normal Camera app and attach it with Photo Library.</td></tr>
+  <tr><td>No location on a note</td><td>Open from the Home Screen icon. Check Settings → Privacy &amp; Security → Location Services is on and allowed "While Using". Go outdoors and wait a few seconds. The note saves either way.</td></tr>
+  <tr><td>Location but no weather</td><td>Normal when the note was made without signal. Blank means "not known".</td></tr>
+  <tr><td>Dictation types the wrong language</td><td>Switch keyboard with the globe key, and confirm both keyboards are added.</td></tr>
+  <tr><td>A note vanished after installing the icon</td><td>It was captured in a Safari tab before installing and cannot be moved across. Re-enter it in the installed app.</td></tr>
+  <tr><td>App looks normal but everything fails (old :8443 icon)</td><td>Delete the icon, remove the server from Safari → Settings → Advanced → Website Data, then re-add the icon from the :9443 address.</td></tr>
+</table>
+
+<h3>Quick reference</h3>
+<ul class="checklist">
+  <li>Installed to the Home Screen and opened only from the icon</li>
+  <li>Location and Camera allowed</li>
+  <li>Both Afrikaans and English keyboards added</li>
+  <li>The farm's blocks set up in Settings → Blocks</li>
+  <li>Title, block, notes, actions and tags filled in, then Save Note</li>
+  <li>Check the To do tab, and tick jobs off when they are done</li>
+  <li>Opened the app with signal after a batch of offline notes</li>
+  <li>Check that "not yet synced" has cleared</li>
+  <li>Copy a backup off the server every so often</li>
+</ul>
+
+</body>
+</html>
