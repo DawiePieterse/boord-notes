@@ -179,13 +179,18 @@ function renderActionRows() {
     </div>`).join("");
 }
 
-function addAction(kind) {
+// Tapped from the type chips (then the cursor goes to "with what?"), or from
+// an AI Tidy up suggestion that already says with what and whether it's done.
+function addAction(kind, { detail = "", status = "todo", focus = true } = {}) {
   kind = (kind || "").trim();
   if (!kind) return;
   // The spelling already on the list, if it's there in another case.
   const known = allActionTypes.find((t) => t.name.toLowerCase() === kind.toLowerCase());
-  currentActions.push({ id: NB.uuid(), kind: known ? known.name : kind, detail: "", status: "todo", done_at: null, done_note: "" });
+  const done = status === "done";
+  currentActions.push({ id: NB.uuid(), kind: known ? known.name : kind, detail, status: done ? "done" : "todo",
+                        done_at: done ? new Date().toISOString() : null, done_note: "" });
   renderActionRows();
+  if (!focus) return;
   const inputs = document.querySelectorAll("#actionRows [data-detail]");
   inputs[inputs.length - 1].focus();
 }
@@ -1241,7 +1246,7 @@ async function archiveCurrentEntry() {
 // Both need the server AND its internet connection, so unlike capture they
 // simply say so when they can't run. Neither ever saves anything by itself.
 // ---------------------------------------------------------------------
-let tidySuggestion = null;   // {title, body, suggested_tags} awaiting Use this / Keep mine
+let tidySuggestion = null;   // {title, body, suggested_tags, suggested_actions} awaiting Use this / Keep mine
 
 async function loadAiStatus() {
   let enabled;
@@ -1283,6 +1288,7 @@ async function runTidy() {
         body,
         block: getCaptureBlock(),
         tags: currentTags,
+        actions: currentActions.map((a) => a.kind),
       },
     });
   } catch (e) {
@@ -1299,6 +1305,14 @@ async function runTidy() {
   document.getElementById("tidyTagsWrap").classList.toggle("hidden", !tags.length);
   document.getElementById("tidyTags").innerHTML = tags.map((t) =>
     `<button type="button" class="chip" data-name="${esc(t.name)}">+ ${esc(t.name)}${t.is_new ? " (new)" : ""}</button>`
+  ).join("");
+  // Like the tags, each suggested action is only an offer: nothing reaches
+  // the note until it is tapped.
+  const actions = suggestion.suggested_actions || [];
+  document.getElementById("tidyActionsWrap").classList.toggle("hidden", !actions.length);
+  document.getElementById("tidyActions").innerHTML = actions.map((a, i) =>
+    `<button type="button" class="chip" data-suggested="${i}">+ ${esc(actionText(a))}`
+    + `${a.status === "done" ? " (done)" : ""}${a.is_new ? " (new)" : ""}</button>`
   ).join("");
   document.getElementById("tidyResult").classList.remove("hidden");
 }
@@ -1450,6 +1464,11 @@ function init() {
   onTap("tagChips", "button[data-i]", (b) => { currentTags.splice(parseInt(b.dataset.i), 1); renderTagChips(); });
   onTap("tagPick", "[data-name]", (b) => addCurrentTag(b.dataset.name));
   onTap("tidyTags", "[data-name]", (b) => { addCurrentTag(b.dataset.name); b.remove(); });
+  onTap("tidyActions", "[data-suggested]", (b) => {
+    const a = tidySuggestion?.suggested_actions?.[b.dataset.suggested];
+    if (a) addAction(a.kind, { detail: a.detail, status: a.status, focus: false });
+    b.remove();
+  });
   onTap("photoThumbs", "button", removePhoto);
   onTap("tagsList", "[data-remove-tag]", (b) => removeTag(b.dataset.removeTag));
   onTap("blocksList", "[data-remove-block]", (b) => removeBlock(b.dataset.removeBlock));

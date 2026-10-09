@@ -467,6 +467,13 @@ key (below); without one the app looks and works exactly as before.
   drop facts. It only *proposes*: nothing changes until you tap **Use this**,
   and **Keep mine** discards it. Read it through first - it can still get a
   word wrong.
+
+  It also suggests the **actions** the note leads to - "gaan die blok meer
+  natlei" becomes *+ Water*, "ek het gister LAN gestrooi" becomes *+ Fertilise
+  with LAN (done)* - using the farm's own action list. Tap a suggestion to
+  add it to the note's Actions; untapped ones are simply dropped. It only
+  suggests what the note itself says or plainly implies, never general
+  farming advice, and skips actions the note already has.
 - **Ask AI** (its own tab) - type a question in English or Afrikaans. The
   answer is written from the saved notes only, and the notes it used are
   listed underneath; tap one to open it. If the notes don't cover the

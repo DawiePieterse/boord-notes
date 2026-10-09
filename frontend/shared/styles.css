@@ -167,7 +167,7 @@ body {
 .chip-on { background: var(--tint); color: var(--on-tint); }
 .chip-on button { opacity: 0.75; font-size: 17px; line-height: 1; margin-right: -4px; }
 /* The pick list holds every tag, so it is set smaller to fit two a line. */
-#tagPick .chip, #tidyTags .chip { font-size: 14px; padding: 5px 11px; }
+#tagPick .chip, #tidyTags .chip, #tidyActions .chip { font-size: 14px; padding: 5px 11px; }
 .chip-sm { font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: var(--fill); color: var(--label-2); }
 
 /* ---- Photo thumbnails --------------------------------------------------- */
