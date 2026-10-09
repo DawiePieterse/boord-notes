@@ -393,7 +393,7 @@ HEIC out of the album attaches just like a camera shot does.
 ## 4. Using the App
 
 The app is laid out like an iPhone app: the tabs - **Capture**, **To do**,
-**Dashboard**, **Entries**, **Ask** (only when AI help is on) and **Settings** - sit along the
+**Dashboard**, **Entries**, **Ask AI** (only when AI help is on) and **Settings** - sit along the
 bottom of the screen, and each screen's name is shown large at the top. It
 follows the phone's own light or dark setting. A note opened from a list
 slides up from the bottom; tap **Done**, or the dimmed area above it, to close
@@ -452,7 +452,7 @@ block, or a type (every block of that variety). The block and type filters
 appear once blocks are set up in Settings. Tap any entry to open its full detail - photos, tags, block, and full
 notes text.
 
-### AI Tidy up and Ask (optional)
+### AI Tidy up and Ask AI (optional)
 
 Two buttons that use Claude. They appear only once the server has an API
 key (below); without one the app looks and works exactly as before.
@@ -463,7 +463,7 @@ key (below); without one the app looks and works exactly as before.
   drop facts. It only *proposes*: nothing changes until you tap **Use this**,
   and **Keep mine** discards it. Read it through first - it can still get a
   word wrong.
-- **Ask** (its own tab) - type a question in English or Afrikaans. The
+- **Ask AI** (its own tab) - type a question in English or Afrikaans. The
   answer is written from the saved notes only, and the notes it used are
   listed underneath; tap one to open it. If the notes don't cover the
   question it says so rather than guessing. Only notes already synced to

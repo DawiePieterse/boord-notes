@@ -55,7 +55,7 @@ function showApp() {
 // ---------------------------------------------------------------------
 // Tabs
 // ---------------------------------------------------------------------
-const PAGE_TITLES = { todo: "To do", dashboard: "Dashboard", entries: "Entries", ask: "Ask the Notes", settings: "Settings" };
+const PAGE_TITLES = { todo: "To do", dashboard: "Dashboard", entries: "Entries", ask: "Ask AI", settings: "Settings" };
 
 function setPageTitle(name) {
   document.getElementById("pageTitle").textContent =
@@ -1313,7 +1313,7 @@ async function runAsk() {
     showAskResult(aiErrorMessage(e), [], "");
   } finally {
     btn.disabled = false;
-    btn.textContent = "Ask";
+    btn.textContent = "Ask AI";
   }
 }
 
