@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <!-- viewport-fit=cover so the tab bar can sit over the home indicator and pad
-     itself with env(safe-area-inset-bottom). -->
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+     itself with env(safe-area-inset-bottom). Pinch zoom stays on: every
+     field is at least 16px, so iOS has no reason to zoom on focus. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Boord Notes</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
@@ -35,13 +36,13 @@
   <h1 id="pageTitle" class="nav-title">New Note</h1>
 </header>
 
-<main class="px-4 pt-2 pb-4 max-w-2xl mx-auto">
+<main class="content">
 
   <!-- CAPTURE -->
   <div id="page-capture" class="page space-y-6">
     <div>
       <div class="group">
-        <div class="row"><input id="entryTitle" class="input font-semibold" placeholder="Title, e.g. Irrigation pump quirk"></div>
+        <div class="row"><input id="entryTitle" class="input font-semibold" autocapitalize="sentences" enterkeyhint="next" placeholder="Title, e.g. Irrigation pump quirk"></div>
         <!-- The picker row appears once Settings has a block list; until then,
              and for "Somewhere else", the text row is the whole field. -->
         <label class="row hidden" id="blockPickRow">
@@ -66,7 +67,7 @@
     <div>
       <div class="group-header">Notes</div>
       <div class="group">
-        <div class="row"><textarea id="entryBody" rows="7" class="textarea" placeholder="Speak or type here..."></textarea></div>
+        <div class="row"><textarea id="entryBody" rows="7" class="textarea" autocapitalize="sentences" placeholder="Speak or type here..."></textarea></div>
       </div>
       <div class="group-footer flex items-center justify-between gap-3">
         <span>Tap the microphone on your keyboard to dictate.</span>
@@ -112,7 +113,7 @@
         <div id="actionRows" class="hide-empty"></div>
         <div id="actionKinds" class="row flex-wrap gap-2 hide-empty"></div>
         <div class="row">
-          <input id="actionKindInput" class="input" placeholder="Another action, e.g. Mulch" maxlength="60">
+          <input id="actionKindInput" class="input" enterkeyhint="done" placeholder="Another action, e.g. Mulch" maxlength="60">
           <button type="button" id="addActionBtn" class="link shrink-0">Add</button>
         </div>
       </div>
@@ -126,7 +127,7 @@
         <!-- A button as well as Enter: the iPhone keyboard's return key gives
              no hint that it adds the tag, so new tags went unnoticed. -->
         <div class="row">
-          <input id="tagInput" list="tagSuggestions" class="input" placeholder="Type a tag, new or existing">
+          <input id="tagInput" list="tagSuggestions" class="input" enterkeyhint="done" placeholder="Type a tag, new or existing">
           <button type="button" id="addTagBtn" class="link shrink-0">Add</button>
         </div>
         <datalist id="tagSuggestions"></datalist>
@@ -176,26 +177,28 @@
   <!-- TO DO: every action still waiting, by block, longest-waiting first -->
   <div id="page-todo" class="page hidden space-y-6">
     <div id="todoList" class="space-y-6"></div>
-    <div id="todoEmpty" class="hidden text-center py-16 px-6" style="color: var(--label-2)">
+    <div id="todoEmpty" class="hidden text-center py-16 px-6 text-2">
       Nothing to do.<br><span class="text-[15px]">Actions added to a note show up here until they're marked done.</span>
     </div>
   </div>
 
   <!-- DASHBOARD -->
   <div id="page-dashboard" class="page hidden space-y-6">
-    <div class="grid grid-cols-2 gap-3">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
       <div class="tile"><div class="tile-label">Total notes</div><div class="tile-value" id="statTotal">0</div></div>
       <div class="tile"><div class="tile-label">This week</div><div class="tile-value" id="statWeek">0</div></div>
       <div class="tile"><div class="tile-label">With photos</div><div class="tile-value" id="statPhotos">0</div></div>
       <div class="tile"><div class="tile-label">Tags used</div><div class="tile-value" id="statTags">0</div></div>
     </div>
-    <div>
-      <div class="group-header">By tag</div>
-      <div id="tagBreakdown" class="group"></div>
-    </div>
-    <div>
-      <div class="group-header">Recent</div>
-      <div id="recentEntries" class="group"></div>
+    <div class="grid lg:grid-cols-2 gap-6 items-start">
+      <div>
+        <div class="group-header">By tag</div>
+        <div id="tagBreakdown" class="group"></div>
+      </div>
+      <div>
+        <div class="group-header">Recent</div>
+        <div id="recentEntries" class="group"></div>
+      </div>
     </div>
   </div>
 
@@ -204,7 +207,7 @@
     <div class="space-y-3">
       <label class="search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7.5"/><path d="m20.5 20.5-4-4"/></svg>
-        <input id="searchInput" type="search" class="input text-[17px]" placeholder="Search notes, titles, blocks">
+        <input id="searchInput" type="search" class="input" enterkeyhint="search" placeholder="Search notes, titles, blocks">
       </label>
       <div class="flex gap-2 overflow-x-auto -mx-4 px-4 pb-1">
         <select id="tagFilter" class="pill-select"><option value="">All tags</option></select>
@@ -214,7 +217,7 @@
       </div>
     </div>
     <div id="entriesList" class="group hide-empty"></div>
-    <div id="entriesEmpty" class="hidden text-center py-16" style="color: var(--label-2)">No notes yet.</div>
+    <div id="entriesEmpty" class="hidden text-center py-16 text-2">No notes yet.</div>
   </div>
 
   <!-- ASK -->
@@ -245,7 +248,7 @@
       <div class="group">
         <div id="tagsList"></div>
         <div class="row">
-          <input id="newTagInput" class="input" placeholder="New tag" maxlength="60">
+          <input id="newTagInput" class="input" enterkeyhint="done" placeholder="New tag" maxlength="60">
           <button type="button" id="newTagBtn" class="link shrink-0">Add</button>
         </div>
       </div>
@@ -257,7 +260,7 @@
       <div class="group">
         <div id="actionTypesList"></div>
         <div class="row">
-          <input id="newActionTypeInput" class="input" placeholder="New action" maxlength="60">
+          <input id="newActionTypeInput" class="input" enterkeyhint="done" placeholder="New action" maxlength="60">
           <button type="button" id="newActionTypeBtn" class="link shrink-0">Add</button>
         </div>
       </div>
@@ -297,12 +300,12 @@
       <p class="group-footer">A full backup (database and all photos) is also taken automatically every night at 2am.</p>
     </div>
 
-    <p class="text-center text-[13px]" style="color: var(--label-3)">Boord Notes <span id="appVersion"></span></p>
+    <p class="text-center text-[13px] text-3">Boord Notes <span id="appVersion"></span></p>
   </div>
 
 </main>
 
-<nav class="tabbar">
+<nav class="tabbar" aria-label="Sections">
   <button class="tab-btn active" data-tab="capture">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
     Capture
@@ -335,10 +338,10 @@
 <!-- Photo source chooser, as an iOS action sheet: Capture is the screen Andre
      uses one-handed in an orchard, and three permanent buttons push Save Note
      below the fold on a phone. -->
-<div id="photoSourceSheet" class="overlay hidden">
+<div id="photoSourceSheet" class="overlay hidden" role="dialog" aria-modal="true" aria-label="Add a photo">
   <div class="action-sheet space-y-2">
     <div class="group">
-      <div class="row justify-center text-[13px]" style="color: var(--label-2); min-height: 40px">Add a photo from</div>
+      <div class="row justify-center text-[13px] text-2" style="min-height: 40px">Add a photo from</div>
       <button type="button" data-source="camera" class="photo-source row tappable">Camera</button>
       <button type="button" data-source="album" class="photo-source row tappable">Photo Library</button>
       <button type="button" data-source="file" class="photo-source row tappable">Files</button>
@@ -348,14 +351,14 @@
 </div>
 
 <!-- Marking an action done: an optional line for what was actually used -->
-<div id="doneSheet" class="overlay hidden" style="z-index: 45">
+<div id="doneSheet" class="overlay overlay-top hidden" role="dialog" aria-modal="true" aria-label="Mark as done">
   <div class="action-sheet space-y-2">
     <div class="group">
       <div class="row flex-col gap-0" style="min-height: 64px">
-        <span class="text-[13px]" style="color: var(--label-2)">Mark as done</span>
-        <span id="doneWhat" class="text-[17px] font-semibold text-center" style="color: var(--label)"></span>
+        <span class="text-[13px] text-2">Mark as done</span>
+        <span id="doneWhat" class="text-[17px] font-semibold text-center"></span>
       </div>
-      <label class="row"><input id="doneNote" class="input text-center" placeholder="What was used, if different (optional)" maxlength="200"></label>
+      <label class="row"><input id="doneNote" class="input text-center" enterkeyhint="done" placeholder="What was used, if different (optional)" maxlength="200"></label>
       <button type="button" id="doneConfirmBtn" class="row tappable font-semibold">Mark Done</button>
     </div>
     <div class="group"><button type="button" id="doneCancelBtn" class="row tappable">Cancel</button></div>
@@ -363,14 +366,14 @@
 </div>
 
 <!-- Entry detail, as a sheet from the bottom -->
-<div id="detailModal" class="overlay hidden">
+<div id="detailModal" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
   <div class="sheet">
     <div class="sheet-bar">
       <span class="grabber"></span>
       <!-- Plain text, not an icon font: this is the only way out of the
            sheet, and a glyph that fails to load would leave it with nothing
            to tap. -->
-      <button id="closeDetailBtn" class="link font-semibold py-1">Done</button>
+      <button id="closeDetailBtn" class="link font-semibold">Done</button>
     </div>
     <div class="px-5 pb-8 space-y-4">
       <div>
@@ -382,8 +385,8 @@
       <div id="detailTags" class="flex flex-wrap gap-2 hide-empty"></div>
       <div id="detailTodo" class="group hide-empty"></div>
       <div id="detailBody" class="leading-relaxed whitespace-pre-wrap"></div>
-      <div id="detailPhotos" class="grid grid-cols-2 gap-2 hide-empty"></div>
-      <div id="detailActions" class="group">
+      <div id="detailPhotos" class="grid grid-cols-2 sm:grid-cols-3 gap-2 hide-empty"></div>
+      <div class="group">
         <button id="editEntryBtn" class="row tappable link justify-center">Edit Note</button>
         <button id="archiveEntryBtn" class="row tappable link-red justify-center">Archive Note</button>
       </div>

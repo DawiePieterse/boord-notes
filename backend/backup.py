@@ -40,7 +40,9 @@ def create_backup() -> str:
             for f in files:
                 full = os.path.join(root, f)
                 arcname = os.path.join("photos", os.path.relpath(full, PHOTOS_DIR))
-                zf.write(full, arcname=arcname)
+                # Already JPEG-compressed: deflating them again costs CPU
+                # for next to no space.
+                zf.write(full, arcname=arcname, compress_type=zipfile.ZIP_STORED)
     _prune_old_backups()
     return filename
 

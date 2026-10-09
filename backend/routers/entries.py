@@ -77,16 +77,17 @@ def _get_or_create_tags(session: Session, names: List[str]) -> List[Tag]:
     return list(tags.values())
 
 
-def action_kind(session: Session, raw: str) -> str:
+def action_kind(session: Session, known: dict, raw: str) -> str:
     """The action type's existing spelling, ignoring case, or a new type -
-    the same rule as tags, so "prune" typed on a note files under "Prune"."""
+    the same rule as tags, so "prune" typed on a note files under "Prune".
+    `known` is {lower-case name: name}, loaded once per note and kept
+    current here as types are added."""
     name = raw.strip()
-    for t in session.exec(select(ActionType)).all():
-        if t.name.lower() == name.lower():
-            return t.name
-    session.add(ActionType(name=name))
-    session.flush()
-    return name
+    if name.lower() not in known:
+        session.add(ActionType(name=name))
+        session.flush()
+        known[name.lower()] = name
+    return known[name.lower()]
 
 
 def _save_actions(session: Session, entry_id: str, actions: List[ActionIn]) -> None:
@@ -96,6 +97,7 @@ def _save_actions(session: Session, entry_id: str, actions: List[ActionIn]) -> N
     arrives done without a time (the phone normally sends its own)."""
     existing = {a.id: a for a in session.exec(select(EntryAction).where(EntryAction.entry_id == entry_id)).all()}
     keep = set()
+    known = {n.lower(): n for n in session.exec(select(ActionType.name)).all()}
     for a in actions:
         _validate_entry_id(a.id)
         if not a.kind.strip():
@@ -104,7 +106,7 @@ def _save_actions(session: Session, entry_id: str, actions: List[ActionIn]) -> N
         row = existing.get(a.id) or EntryAction(id=a.id, entry_id=entry_id, kind="")
         if row.entry_id != entry_id:
             continue  # an id belonging to another note is never moved
-        row.kind = action_kind(session, a.kind)
+        row.kind = action_kind(session, known, a.kind)
         row.detail = a.detail.strip()
         row.status = status
         row.done_at = (a.done_at or row.done_at or datetime.utcnow()) if status == "done" else None
@@ -207,6 +209,9 @@ def list_entries(q: str = "", tag: str = "", block: str = "", variety: str = "",
         query = query.where(Entry.id.in_(select(EntryAction.entry_id).where(EntryAction.kind == action)))
     if block:
         query = query.where(Entry.block == block)
+    if tag:
+        query = query.where(Entry.id.in_(
+            select(EntryTagLink.entry_id).join(Tag).where(Tag.name == tag)))
     if variety:
         query = query.where(Entry.block.in_(
             [n for n, v in _varieties(session).items() if v == variety]))
@@ -218,9 +223,6 @@ def list_entries(q: str = "", tag: str = "", block: str = "", variety: str = "",
         needle = q.lower()
         entries = [e for e in entries if needle in e.title.lower() or needle in e.body.lower()
                    or needle in e.block.lower()]
-    if tag:
-        tagged = _tag_names_by_entry(session, [e.id for e in entries])
-        entries = [e for e in entries if tag in tagged.get(e.id, [])]
     results = _entries_out(session, entries)
     results.sort(key=lambda r: r["created_at"], reverse=True)
     return results
@@ -230,7 +232,7 @@ def list_entries(q: str = "", tag: str = "", block: str = "", variety: str = "",
 def entry_stats(session: Session = Depends(get_session)):
     entries = session.exec(select(Entry).where(Entry.archived == False)).all()  # noqa: E712
     week_ago = datetime.utcnow() - timedelta(days=7)
-    with_photos_ids = set(session.exec(select(Photo.entry_id)).all())
+    with_photos_ids = set(session.exec(select(Photo.entry_id).distinct()).all())
     tag_names = _tag_names_by_entry(session, [e.id for e in entries])
     tag_counts: dict = {}
     for e in entries:
