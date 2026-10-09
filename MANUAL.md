@@ -392,18 +392,25 @@ HEIC out of the album attaches just like a camera shot does.
 
 ## 4. Using the App
 
+The app is laid out like an iPhone app: the tabs - **Capture**, **Dashboard**,
+**Entries**, **Ask** (only when AI help is on) and **Settings** - sit along the
+bottom of the screen, and each screen's name is shown large at the top. It
+follows the phone's own light or dark setting. A note opened from a list
+slides up from the bottom; tap **Done**, or the dimmed area above it, to close
+it.
+
 ### Capture
 
 - **Title** - short, e.g. "Irrigation pump quirk".
 - **Block / Location** (optional) - once the farm's blocks are set up in
   Settings (see [Blocks](#blocks-settings)), pick one from the list, grouped by
-  type. For a spot that isn't a block, pick **Somewhere else (type it)** and
+  type. For a spot that isn't a block, pick **Somewhere else…** and
   type it, e.g. "near the pump station". Before any blocks are set up the
   field is a plain text box.
 - **Notes** - the dictated (or typed) body of the entry.
 - **Tags** - add as many as fit the note. Tap **Choose from existing tags**
   to open the list and tap each one to add it; or type a word and tap
-  **+ Add tag** (or press Enter) - a word that isn't a tag yet becomes a new
+  **Add** (or press Enter) - a word that isn't a tag yet becomes a new
   one. Tap the &times; on a tag to take it off the note. A starter set is
   preloaded so Andre isn't starting from nothing.
 - **Photos** - tap **Add Photo** to attach one or more.
@@ -468,9 +475,11 @@ The AI code has tests that run without a key or a connection: in `backend`,
 The **Tags** card at the top of Settings lists every tag with how many notes
 use it. A tag no note uses has a **Remove** button instead; a tag still on a
 note can't be removed. At the foot of the card, type a name and tap
-**+ New tag** to set up a tag before any note needs it - it then appears in
+**Add** to set up a tag before any note needs it - it then appears in
 the Capture screen's tag suggestions. A name that matches an existing tag
 (ignoring capitals) is refused, so "pruning" can't split off from "Pruning".
+The same goes for tags typed on a note: "pruning" files the note under the
+existing "Pruning" tag rather than starting a second one.
 Adding and removing need a connection to the server.
 
 ### Blocks (Settings)
@@ -481,14 +490,14 @@ variety, e.g. "TMR" - and the type is what the Entries **type** filter and
 the grouping on the Capture picker use.
 
 - **Add** - type the name and type at the foot of the card and tap
-  **+ Add block**. A name that matches an existing block (ignoring capitals)
+  **Add Block**. A name that matches an existing block (ignoring capitals)
   is refused.
 - **Edit** - fixes a name or type. A new name is carried onto every note
   that used the old one, so nothing is left filed under the typo.
 - **Remove** - only offered on a block no note uses.
 - **On notes, but not on the list** - block names typed on notes before the
   list existed (or spots like "near the pump station"). Tap
-  **+ Add to list** to put one on the list, filling in its type first.
+  **Add to List** to put one on the list, filling in its type first.
 
 The block and tag lists are kept on each phone too, so the Capture screen's
 pickers still work with no signal. A block added in Settings reaches the
@@ -521,7 +530,7 @@ instantly, with or without a signal. A background sync process then:
 ### Location and weather on a note
 
 Opening the **Capture** tab starts the phone looking for a GPS fix, and the
-line above the Save button says whether one is ready. Saving never waits for
+line under **Record location** says whether one is ready. Saving never waits for
 it - if no fix has arrived, the note simply saves without one.
 
 The two behave differently out of signal, and deliberately so:
@@ -571,7 +580,7 @@ skipped.
 
 Anyone using the app can also trigger
 one on demand from the **Settings** tab: the **Backups** card has a
-**Backup Now** button, plus a list of existing backups with a **Download**
+**Back Up Now** button, plus a list of existing backups with a **Download**
 link for each - useful for pulling a copy off the server onto a phone or
 laptop without needing to touch the server itself. On the server, the
 underlying files sit in `data\backups\`, named like

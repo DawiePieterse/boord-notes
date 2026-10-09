@@ -2,309 +2,328 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- viewport-fit=cover so the tab bar can sit over the home indicator and pad
+     itself with env(safe-area-inset-bottom). -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Boord Notes</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Notes">
-<meta name="theme-color" content="#0A2F6B">
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <script src="../shared/tailwind.js"></script>
 <!-- Served from the farm server, not a CDN: the phones are tailnet-only and
-     have no route to the public internet. See shared/fontawesome/fa-subset.css. -->
+     have no route to the public internet. See shared/fontawesome/fa-subset.css.
+     Only the weather glyphs come from it now; every other icon is inline SVG
+     below, so it can never render as a blank box. -->
 <link rel="stylesheet" href="../shared/fontawesome/fa-subset.css">
 <link rel="stylesheet" href="../shared/styles.css">
 <script src="../shared/api.js"></script>
 <script src="idb.js"></script>
 </head>
-<body class="bg-slate-100 min-h-screen pb-6">
+<body>
 
 <!-- There is no sign-in. Reaching the server over the tailnet is the whole of
      the access control - see MANUAL.md chapter 2, "Tailscale HTTPS". -->
-<div id="app">
-  <div class="boord-header p-4">
-    <div class="flex items-start justify-between gap-3">
+<header class="nav">
+  <div class="flex items-center justify-between h-6">
+    <div class="nav-app">Boord Notes</div>
+    <div id="unsyncedBadgeWrap" class="hidden"><span class="badge-unsynced" id="unsyncedBadge"></span></div>
+  </div>
+  <h1 id="pageTitle" class="nav-title">New Note</h1>
+</header>
+
+<main class="px-4 pt-2 pb-4 max-w-2xl mx-auto">
+
+  <!-- CAPTURE -->
+  <div id="page-capture" class="page space-y-6">
+    <div>
+      <div class="group">
+        <div class="row"><input id="entryTitle" class="input font-semibold" placeholder="Title, e.g. Irrigation pump quirk"></div>
+        <!-- The picker row appears once Settings has a block list; until then,
+             and for "Somewhere else", the text row is the whole field. -->
+        <label class="row hidden" id="blockPickRow">
+          <span class="row-label">Block</span>
+          <span class="select-wrap">
+            <select id="entryBlockSelect" class="select"></select>
+            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg>
+          </span>
+        </label>
+        <div class="row" id="blockTextRow"><input id="entryBlock" class="input" placeholder="Block or location (optional)"></div>
+        <label class="row" for="gpsToggle">
+          <span class="row-label">Record location</span>
+          <span class="nb-switch">
+            <input type="checkbox" id="gpsToggle">
+            <span class="nb-switch-track"></span>
+          </span>
+        </label>
+      </div>
+      <p id="captureContext" class="group-footer"></p>
+    </div>
+
+    <div>
+      <div class="group-header">Notes</div>
+      <div class="group">
+        <div class="row"><textarea id="entryBody" rows="7" class="textarea" placeholder="Speak or type here..."></textarea></div>
+      </div>
+      <div class="group-footer flex items-center justify-between gap-3">
+        <span>Tap the microphone on your keyboard to dictate.</span>
+        <!-- AI tidy-up: only shown when the server has a key, and it only
+             ever proposes - nothing changes until Andre taps Use this. -->
+        <span id="tidyWrap" class="hidden shrink-0">
+          <button type="button" id="tidyBtn" class="btn btn-tinted btn-small">Tidy up</button>
+        </span>
+      </div>
+      <p id="tidyHint" class="group-footer hide-empty"></p>
+      <div id="tidyResult" class="hidden mt-3">
+        <div class="group">
+          <div class="row flex-col items-stretch gap-1">
+            <div class="row-sub text-[13px] uppercase">Suggested title</div>
+            <div id="tidyTitle" class="font-semibold"></div>
+          </div>
+          <div class="row flex-col items-stretch gap-1">
+            <div class="row-sub text-[13px] uppercase">Suggested notes</div>
+            <div id="tidyBody" class="text-[15px] whitespace-pre-wrap"></div>
+          </div>
+          <div id="tidyTagsWrap" class="row flex-col items-stretch gap-2 hidden">
+            <div class="row-sub text-[13px] uppercase">Suggested tags - tap to add</div>
+            <div id="tidyTags" class="flex flex-wrap gap-2"></div>
+          </div>
+        </div>
+        <div class="flex gap-3 mt-3">
+          <button type="button" id="tidyDismissBtn" class="btn btn-tinted flex-1">Keep mine</button>
+          <button type="button" id="tidyAcceptBtn" class="btn btn-primary flex-1">Use this</button>
+        </div>
+        <p class="group-footer">Read it through - it can still get a word wrong. Your original is kept until you tap Use this.</p>
+      </div>
+    </div>
+
+    <div>
+      <div class="group-header">Tags</div>
+      <div class="group">
+        <div id="tagChips" class="row flex-wrap gap-2 hide-empty"></div>
+        <!-- A button as well as Enter: the iPhone keyboard's return key gives
+             no hint that it adds the tag, so new tags went unnoticed. -->
+        <div class="row">
+          <input id="tagInput" list="tagSuggestions" class="input" placeholder="Type a tag, new or existing">
+          <button type="button" id="addTagBtn" class="link shrink-0">Add</button>
+        </div>
+        <datalist id="tagSuggestions"></datalist>
+        <!-- Every tag not yet on this note, one tap each. Folded by default: a
+             dozen chips open would push Save Note off the screen Andre uses
+             one-handed in the orchard. -->
+        <details id="tagPickWrap" class="hidden">
+          <summary class="row tappable link">
+            <span class="row-label">Choose from existing tags</span>
+            <svg class="chevron disclosure" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg>
+          </summary>
+          <div id="tagPick" class="flex flex-wrap gap-2 px-4 pb-4 pt-1"></div>
+        </details>
+      </div>
+    </div>
+
+    <div>
+      <div class="group-header">Photos</div>
+      <div class="group">
+        <div id="photoThumbs" class="row flex-wrap gap-3 pt-4 hide-empty"></div>
+        <button type="button" id="addPhotoBtn" class="row tappable link">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Add Photo
+        </button>
+      </div>
+      <!-- One input per source. The `capture` attribute is what forces the
+           camera to open directly, so it can only ever be on ONE of these -
+           a single shared input with `capture` set is exactly why there was
+           no way to reach the album. Everything picked here is re-encoded
+           to JPEG by downscaleImage() before it is stored, so a HEIC out of
+           the iPhone album or a PNG off the file system both arrive at the
+           server as the .jpg its upload route accepts. -->
+      <input id="photoInputCamera" type="file" accept="image/*" capture="environment" class="hidden">
+      <input id="photoInputAlbum" type="file" accept="image/*" class="hidden">
+      <input id="photoInputFile" type="file" accept="image/*,.heic,.heif" class="hidden">
+    </div>
+
+    <div>
+      <div class="flex gap-3">
+        <button id="cancelEditBtn" class="hidden btn btn-tinted flex-1">Cancel</button>
+        <button id="saveEntryBtn" class="btn btn-primary flex-1">Save Note</button>
+      </div>
+      <p class="group-footer text-center">Saved on this phone instantly, and synced to the server once there's signal.</p>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="page-dashboard" class="page hidden space-y-6">
+    <div class="grid grid-cols-2 gap-3">
+      <div class="tile"><div class="tile-label">Total notes</div><div class="tile-value" id="statTotal">0</div></div>
+      <div class="tile"><div class="tile-label">This week</div><div class="tile-value" id="statWeek">0</div></div>
+      <div class="tile"><div class="tile-label">With photos</div><div class="tile-value" id="statPhotos">0</div></div>
+      <div class="tile"><div class="tile-label">Tags used</div><div class="tile-value" id="statTags">0</div></div>
+    </div>
+    <div>
+      <div class="group-header">By tag</div>
+      <div id="tagBreakdown" class="group"></div>
+    </div>
+    <div>
+      <div class="group-header">Recent</div>
+      <div id="recentEntries" class="group"></div>
+    </div>
+  </div>
+
+  <!-- ENTRIES -->
+  <div id="page-entries" class="page hidden space-y-4">
+    <div class="space-y-3">
+      <label class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7.5"/><path d="m20.5 20.5-4-4"/></svg>
+        <input id="searchInput" type="search" class="input text-[17px]" placeholder="Search notes, titles, blocks">
+      </label>
+      <div class="flex gap-2 overflow-x-auto -mx-4 px-4 pb-1">
+        <select id="tagFilter" class="pill-select"><option value="">All tags</option></select>
+        <select id="blockFilter" class="pill-select hidden"><option value="">All blocks</option></select>
+        <select id="varietyFilter" class="pill-select hidden"><option value="">All types</option></select>
+      </div>
+    </div>
+    <div id="entriesList" class="group hide-empty"></div>
+    <div id="entriesEmpty" class="hidden text-center py-16" style="color: var(--label-2)">No notes yet.</div>
+  </div>
+
+  <!-- ASK -->
+  <div id="page-ask" class="page hidden space-y-6">
+    <div>
+      <div class="group">
+        <div class="row"><textarea id="askInput" rows="3" class="textarea" placeholder="e.g. When do we spray the Block 4 pears?"></textarea></div>
+      </div>
+      <p class="group-footer">Ask in English or Afrikaans. Answers come only from the notes saved to the server, with the notes they used listed below.</p>
+    </div>
+    <button id="askBtn" class="btn btn-primary w-full">Ask</button>
+    <div id="askResult" class="hidden space-y-6">
+      <div class="group"><div id="askAnswer" class="row whitespace-pre-wrap leading-relaxed"></div></div>
+      <div id="askSourcesWrap" class="hidden">
+        <div class="group-header">Based on these notes</div>
+        <div id="askSources" class="group"></div>
+      </div>
+      <p id="askFoot" class="group-footer"></p>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="page-settings" class="page hidden space-y-8">
+    <!-- Every tag, with how many live notes use it. Remove is offered only
+         on tags no note uses, matching what the server allows. -->
+    <div>
+      <div class="group-header">Tags</div>
+      <div class="group">
+        <div id="tagsList"></div>
+        <div class="row">
+          <input id="newTagInput" class="input" placeholder="New tag" maxlength="60">
+          <button type="button" id="newTagBtn" class="link shrink-0">Add</button>
+        </div>
+      </div>
+      <p class="group-footer">Set up tags before a note needs them. A tag can be removed once no note uses it.</p>
+    </div>
+
+    <!-- The farm's block list, kept in Notes. Notes name their block as
+         text, so renaming here renames it on the notes too. -->
+    <div>
+      <div class="group-header">Blocks</div>
+      <div id="blocksList" class="group"></div>
+      <p class="group-footer">Offered on the Capture screen, grouped by type (variety). Entries can be filtered by either.</p>
+    </div>
+    <div id="unlistedWrap" class="hidden">
+      <div class="group-header">On notes, but not on the list</div>
+      <div id="unlistedList" class="group"></div>
+    </div>
+    <div>
+      <div class="group-header" id="blockFormTitle">Add a block</div>
+      <div class="group">
+        <label class="row"><span class="w-16 shrink-0">Name</span><input id="blockNameInput" class="input" placeholder="e.g. 8a" maxlength="60"></label>
+        <label class="row"><span class="w-16 shrink-0">Type</span><input id="blockVarietyInput" list="varietySuggestions" class="input" placeholder="e.g. TMR" maxlength="60"></label>
+        <datalist id="varietySuggestions"></datalist>
+      </div>
+      <div class="flex gap-3 mt-3">
+        <button type="button" id="blockCancelBtn" class="hidden btn btn-tinted flex-1">Cancel</button>
+        <button type="button" id="blockSaveBtn" class="btn btn-tinted flex-1">Add Block</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="group-header">Backups</div>
+      <div class="group">
+        <button id="backupNowBtn" class="row tappable link justify-center">Back Up Now</button>
+        <div id="backupsList"></div>
+      </div>
+      <p class="group-footer">A full backup (database and all photos) is also taken automatically every night at 2am.</p>
+    </div>
+
+    <p class="text-center text-[13px]" style="color: var(--label-3)">Boord Notes <span id="appVersion"></span></p>
+  </div>
+
+</main>
+
+<nav class="tabbar">
+  <button class="tab-btn active" data-tab="capture">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+    Capture
+  </button>
+  <button class="tab-btn" data-tab="dashboard">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M6 16v-5"/><path d="M11 16V6"/><path d="M16 16v-8"/><path d="M21 16v-3"/></svg>
+    Dashboard
+  </button>
+  <button class="tab-btn" data-tab="entries">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h12"/><path d="M9 12h12"/><path d="M9 18h12"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>
+    Entries
+  </button>
+  <button class="tab-btn hidden" data-tab="ask" id="tabAsk">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.2A8.38 8.38 0 0 1 12 3a8.38 8.38 0 0 1 9 8.5Z"/></svg>
+    Ask
+  </button>
+  <button class="tab-btn" data-tab="settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg>
+    Settings
+  </button>
+</nav>
+
+<!-- Photo source chooser, as an iOS action sheet: Capture is the screen Andre
+     uses one-handed in an orchard, and three permanent buttons push Save Note
+     below the fold on a phone. -->
+<div id="photoSourceSheet" class="overlay hidden">
+  <div class="action-sheet space-y-2">
+    <div class="group">
+      <div class="row justify-center text-[13px]" style="color: var(--label-2); min-height: 40px">Add a photo from</div>
+      <button type="button" data-source="camera" class="photo-source row tappable">Camera</button>
+      <button type="button" data-source="album" class="photo-source row tappable">Photo Library</button>
+      <button type="button" data-source="file" class="photo-source row tappable">Files</button>
+    </div>
+    <div class="group"><button type="button" id="photoSourceCancel" class="row tappable font-semibold">Cancel</button></div>
+  </div>
+</div>
+
+<!-- Entry detail, as a sheet from the bottom -->
+<div id="detailModal" class="overlay hidden">
+  <div class="sheet">
+    <div class="sheet-bar">
+      <span class="grabber"></span>
+      <!-- Plain text, not an icon font: this is the only way out of the
+           sheet, and a glyph that fails to load would leave it with nothing
+           to tap. -->
+      <button id="closeDetailBtn" class="link font-semibold py-1">Done</button>
+    </div>
+    <div class="px-5 pb-8 space-y-4">
       <div>
-        <div class="font-bold text-2xl md:text-3xl leading-tight">Boord Notes</div>
-        <div class="text-xs text-white/60 mt-1">Bekfontein farm knowledge</div>
+        <h2 id="detailTitle" class="text-[28px] font-bold leading-tight tracking-tight">Entry</h2>
+        <div id="detailMeta" class="row-sub mt-1"></div>
       </div>
-      <div class="text-right">
-        <div id="unsyncedBadgeWrap" class="hidden"><span class="unsynced-badge" id="unsyncedBadge"></span></div>
-        <div id="appVersion" class="text-xs text-white/60 mt-1"></div>
+      <div id="detailBlock" class="font-medium hide-empty"></div>
+      <div id="detailContext" class="hidden row-sub"></div>
+      <div id="detailTags" class="flex flex-wrap gap-2 hide-empty"></div>
+      <div id="detailBody" class="leading-relaxed whitespace-pre-wrap"></div>
+      <div id="detailPhotos" class="grid grid-cols-2 gap-2 hide-empty"></div>
+      <div id="detailActions" class="group">
+        <button id="editEntryBtn" class="row tappable link justify-center">Edit Note</button>
+        <button id="archiveEntryBtn" class="row tappable link-red justify-center">Archive Note</button>
       </div>
-    </div>
-  </div>
-
-  <div class="flex overflow-x-auto bg-white shadow sticky top-0 z-10">
-    <button class="tab-btn active" data-tab="capture" id="tabCapture">Capture</button>
-    <button class="tab-btn" data-tab="dashboard">Dashboard</button>
-    <button class="tab-btn" data-tab="entries">Entries</button>
-    <button class="tab-btn hidden" data-tab="ask" id="tabAsk">Ask</button>
-    <button class="tab-btn" data-tab="settings">Settings</button>
-  </div>
-
-  <div class="p-4 max-w-2xl mx-auto">
-
-    <!-- CAPTURE -->
-    <div id="page-capture" class="page space-y-4">
-      <div class="bg-white rounded-2xl shadow p-4 space-y-4">
-        <div class="text-lg font-bold" id="captureFormTitle">New Entry</div>
-
-        <div>
-          <label class="text-xs font-medium text-slate-500">Title</label>
-          <input id="entryTitle" class="w-full border border-slate-300 rounded-lg p-3 text-lg" placeholder="Short title, e.g. Irrigation pump quirk">
-        </div>
-
-        <div>
-          <label class="text-xs font-medium text-slate-500">Block / Location (optional)</label>
-          <!-- The picker appears once Settings has a block list; until then,
-               and for "Somewhere else", the text box is the whole field. -->
-          <select id="entryBlockSelect" class="hidden w-full border border-slate-300 rounded-lg p-2 bg-white"></select>
-          <input id="entryBlock" class="w-full border border-slate-300 rounded-lg p-2" placeholder="e.g. Block 4 North, or near the pump station">
-          <div class="flex items-center justify-between mt-2">
-            <label for="gpsToggle" class="text-xs font-medium text-slate-500">Record GPS location</label>
-            <label class="nb-switch">
-              <input type="checkbox" id="gpsToggle">
-              <span class="nb-switch-track"></span>
-            </label>
-          </div>
-          <p id="captureContext" class="text-[11px] text-slate-400 mt-1"></p>
-        </div>
-
-        <div>
-          <label class="text-xs font-medium text-slate-500 block mb-1">Notes - tap the microphone key on your keyboard to dictate</label>
-          <textarea id="entryBody" rows="6" class="w-full border border-slate-300 rounded-lg p-3 text-base" placeholder="Speak or type here..."></textarea>
-          <!-- AI tidy-up: only shown when the server has a key, and it only
-               ever proposes - nothing changes until Andre taps Use this. -->
-          <div id="tidyWrap" class="hidden mt-2">
-            <button type="button" id="tidyBtn" class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium">
-              Tidy up
-            </button>
-            <span id="tidyHint" class="text-[11px] text-slate-400 ml-2"></span>
-            <div id="tidyResult" class="hidden mt-3 border border-slate-200 rounded-xl p-3 space-y-2 bg-slate-50">
-              <div class="text-xs font-medium text-slate-500">Suggested title</div>
-              <div id="tidyTitle" class="font-semibold"></div>
-              <div class="text-xs font-medium text-slate-500">Suggested notes</div>
-              <div id="tidyBody" class="text-sm whitespace-pre-wrap"></div>
-              <div id="tidyTagsWrap" class="hidden">
-                <div class="text-xs font-medium text-slate-500 mb-1">Suggested tags (tap to add)</div>
-                <div id="tidyTags" class="flex flex-wrap gap-1.5"></div>
-              </div>
-              <div class="flex gap-2 pt-1">
-                <button type="button" id="tidyDismissBtn" class="flex-1 rounded-lg py-2 bg-white border border-slate-200 text-sm">Keep mine</button>
-                <button type="button" id="tidyAcceptBtn" class="flex-1 boord-btn-primary rounded-lg py-2 text-sm font-bold">Use this</button>
-              </div>
-              <p class="text-[11px] text-slate-400">Read it through - it can still get a word wrong. Your original is kept until you tap Use this.</p>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <label class="text-xs font-medium text-slate-500 block mb-1">Tags</label>
-          <div id="tagChips" class="flex flex-wrap gap-1.5 mb-2"></div>
-          <!-- A button as well as Enter: the iPhone keyboard's return key gives
-               no hint that it adds the tag, so new tags went unnoticed. -->
-          <div class="flex gap-2">
-            <input id="tagInput" list="tagSuggestions" class="flex-1 min-w-0 border border-slate-300 rounded-lg p-2 text-sm" placeholder="Type a tag, new or existing">
-            <button type="button" id="addTagBtn" class="shrink-0 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium">+ Add tag</button>
-          </div>
-          <datalist id="tagSuggestions"></datalist>
-          <!-- Every tag not yet on this note, one tap each - the typed box
-               above is only needed for a tag that doesn't exist yet. -->
-          <!-- Folded by default: a dozen chips open would push Save Note off
-               the screen Andre uses one-handed in the orchard. -->
-          <details id="tagPickWrap" class="hidden mt-2">
-            <summary class="text-xs font-medium text-slate-500 py-1 cursor-pointer">Choose from existing tags</summary>
-            <div id="tagPick" class="flex flex-wrap gap-1.5 mt-1"></div>
-          </details>
-        </div>
-
-        <div>
-          <label class="text-xs font-medium text-slate-500 block mb-1">Photos</label>
-          <div id="photoThumbs" class="flex flex-wrap gap-2 mb-2"></div>
-          <button type="button" id="addPhotoBtn" class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium">
-            <i class="fa-solid fa-camera"></i> Add Photo
-          </button>
-          <!-- One input per source. The `capture` attribute is what forces the
-               camera to open directly, so it can only ever be on ONE of these -
-               a single shared input with `capture` set is exactly why there was
-               no way to reach the album. Everything picked here is re-encoded
-               to JPEG by downscaleImage() before it is stored, so a HEIC out of
-               the iPhone album or a PNG off the file system both arrive at the
-               server as the .jpg its upload route accepts. -->
-          <input id="photoInputCamera" type="file" accept="image/*" capture="environment" class="hidden">
-          <input id="photoInputAlbum" type="file" accept="image/*" class="hidden">
-          <input id="photoInputFile" type="file" accept="image/*,.heic,.heif" class="hidden">
-        </div>
-
-        <div class="flex gap-2 pt-2">
-          <button id="cancelEditBtn" class="hidden flex-1 rounded-lg py-3 bg-slate-100">Cancel</button>
-          <button id="saveEntryBtn" class="flex-1 boord-btn-primary rounded-lg py-3 font-bold text-lg">
-            <i class="fa-solid fa-save"></i> Save Note
-          </button>
-        </div>
-        <p class="text-center text-[11px] text-slate-400">Saved on this device instantly, syncs to the server automatically once connected.</p>
-      </div>
-    </div>
-
-    <!-- DASHBOARD -->
-    <div id="page-dashboard" class="page hidden space-y-4">
-      <div class="grid grid-cols-2 gap-3">
-        <div class="bg-white rounded-xl shadow p-4">
-          <div class="text-xs text-slate-500">Total Entries</div>
-          <div class="text-3xl font-bold" id="statTotal">0</div>
-        </div>
-        <div class="bg-white rounded-xl shadow p-4">
-          <div class="text-xs text-slate-500">This Week</div>
-          <div class="text-3xl font-bold" id="statWeek">0</div>
-        </div>
-        <div class="bg-white rounded-xl shadow p-4">
-          <div class="text-xs text-slate-500">With Photos</div>
-          <div class="text-3xl font-bold" id="statPhotos">0</div>
-        </div>
-        <div class="bg-white rounded-xl shadow p-4">
-          <div class="text-xs text-slate-500">Tags Used</div>
-          <div class="text-3xl font-bold" id="statTags">0</div>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl shadow p-4">
-        <div class="font-semibold text-sm text-slate-600 mb-2">Breakdown by tag</div>
-        <div id="tagBreakdown" class="space-y-1.5 text-sm"></div>
-      </div>
-
-      <div class="bg-white rounded-xl shadow p-4">
-        <div class="font-semibold text-sm text-slate-600 mb-2">Recent entries</div>
-        <div id="recentEntries" class="space-y-2"></div>
-      </div>
-    </div>
-
-    <!-- ENTRIES -->
-    <div id="page-entries" class="page hidden space-y-3">
-      <div class="bg-white rounded-xl shadow p-3 flex flex-wrap gap-2">
-        <input id="searchInput" class="flex-1 min-w-[140px] border border-slate-300 rounded-lg p-2 text-sm" placeholder="Search title, notes, block...">
-        <select id="tagFilter" class="border border-slate-300 rounded-lg p-2 text-sm">
-          <option value="">All tags</option>
-        </select>
-        <select id="blockFilter" class="hidden border border-slate-300 rounded-lg p-2 text-sm">
-          <option value="">All blocks</option>
-        </select>
-        <select id="varietyFilter" class="hidden border border-slate-300 rounded-lg p-2 text-sm">
-          <option value="">All types</option>
-        </select>
-      </div>
-      <div id="entriesList" class="space-y-2"></div>
-      <div id="entriesEmpty" class="hidden text-center text-slate-400 py-10">No entries yet.</div>
-    </div>
-
-    <!-- ASK -->
-    <div id="page-ask" class="page hidden space-y-4">
-      <div class="bg-white rounded-2xl shadow p-4 space-y-3">
-        <div class="text-lg font-bold">Ask the notes</div>
-        <p class="text-xs text-slate-500">Ask in English or Afrikaans. Answers come only from the notes that have been saved to the server, with the notes they used listed below.</p>
-        <textarea id="askInput" rows="3" class="w-full border border-slate-300 rounded-lg p-3 text-base" placeholder="e.g. When do we spray the Block 4 pears?"></textarea>
-        <button id="askBtn" class="w-full boord-btn-primary rounded-lg py-3 font-bold">Ask</button>
-      </div>
-      <div id="askResult" class="hidden bg-white rounded-2xl shadow p-4 space-y-3">
-        <div id="askAnswer" class="text-base whitespace-pre-wrap"></div>
-        <div id="askSourcesWrap" class="hidden">
-          <div class="text-xs font-medium text-slate-500 mb-1">Based on these notes</div>
-          <div id="askSources" class="space-y-2"></div>
-        </div>
-        <p id="askFoot" class="text-[11px] text-slate-400"></p>
-      </div>
-    </div>
-
-    <!-- SETTINGS -->
-    <div id="page-settings" class="page hidden space-y-4">
-      <!-- Every tag, with how many live notes use it. Remove is offered only
-           on tags no note uses, matching what the server allows. -->
-      <div class="bg-white rounded-2xl shadow p-4 space-y-3" id="tagsCard">
-        <div class="text-lg font-bold">Tags</div>
-        <p class="text-xs text-slate-500">
-          Set up tags here before a note needs them. A tag can be removed once no note uses it.
-        </p>
-        <div id="tagsList" class="space-y-1.5 text-sm"></div>
-        <div class="flex gap-2 pt-3 border-t border-slate-100">
-          <input id="newTagInput" class="flex-1 min-w-0 border border-slate-300 rounded-lg p-2 text-sm" placeholder="New tag name" maxlength="60">
-          <button type="button" id="newTagBtn" class="shrink-0 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium">+ New tag</button>
-        </div>
-      </div>
-      <!-- The farm's block list, kept in Notes. Notes name their block as
-           text, so renaming here renames it on the notes too. -->
-      <div class="bg-white rounded-2xl shadow p-4 space-y-3" id="blocksCard">
-        <div class="text-lg font-bold">Blocks</div>
-        <p class="text-xs text-slate-500">
-          The blocks offered on the Capture screen, each with its type (variety). Entries can be filtered by either.
-        </p>
-        <div id="blocksList" class="space-y-1.5 text-sm"></div>
-        <div id="unlistedWrap" class="hidden pt-1">
-          <div class="text-xs font-medium text-slate-500 mb-1">On notes, but not on the list</div>
-          <div id="unlistedList" class="space-y-1.5 text-sm"></div>
-        </div>
-        <div class="pt-3 border-t border-slate-100 space-y-2">
-          <div class="text-xs font-medium text-slate-500" id="blockFormTitle">Add a block</div>
-          <div class="flex gap-2">
-            <input id="blockNameInput" class="flex-1 min-w-0 border border-slate-300 rounded-lg p-2 text-sm" placeholder="Block, e.g. 8a" maxlength="60">
-            <input id="blockVarietyInput" list="varietySuggestions" class="flex-1 min-w-0 border border-slate-300 rounded-lg p-2 text-sm" placeholder="Type, e.g. TMR" maxlength="60">
-            <datalist id="varietySuggestions"></datalist>
-          </div>
-          <div class="flex gap-2">
-            <button type="button" id="blockCancelBtn" class="hidden flex-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm">Cancel</button>
-            <button type="button" id="blockSaveBtn" class="flex-1 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium">+ Add block</button>
-          </div>
-        </div>
-      </div>
-      <div class="bg-white rounded-2xl shadow p-4 space-y-3" id="backupsCard">
-        <div class="text-lg font-bold">Backups</div>
-        <p class="text-xs text-slate-500">
-          A full backup (database + all photos) is also taken automatically every day at 2am.
-        </p>
-        <button id="backupNowBtn" class="w-full rounded-lg py-3 font-semibold bg-slate-100">Backup Now</button>
-        <div id="backupsList" class="space-y-2 text-sm pt-1"></div>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<!-- Photo source chooser. A sheet rather than three buttons on the form:
-     Capture is the screen Andre uses one-handed in an orchard, and three
-     permanent buttons push Save Note below the fold on a phone. -->
-<div id="photoSourceSheet" class="fixed inset-0 bg-black/50 hidden items-end justify-center z-40">
-  <div class="bg-white rounded-t-2xl w-full max-w-lg p-4 space-y-2">
-    <div class="text-sm font-bold text-slate-500 px-1 pb-1">Add a photo from</div>
-    <!-- Text, not icons. shared/fontawesome/fa-subset.css is subset to the 11
-         glyphs the app already draws; there is no album or folder glyph in the
-         font file, and a class alone renders a blank box on the phones. -->
-    <button type="button" data-source="camera" class="photo-source w-full rounded-xl py-3 px-4 bg-slate-100 text-left font-semibold">Camera</button>
-    <button type="button" data-source="album" class="photo-source w-full rounded-xl py-3 px-4 bg-slate-100 text-left font-semibold">Photo album</button>
-    <button type="button" data-source="file" class="photo-source w-full rounded-xl py-3 px-4 bg-slate-100 text-left font-semibold">File</button>
-    <button type="button" id="photoSourceCancel" class="w-full rounded-xl py-3 text-slate-500 font-semibold">Cancel</button>
-  </div>
-</div>
-
-<!-- Entry detail modal -->
-<div id="detailModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center p-4 z-40">
-  <div class="bg-white rounded-xl p-5 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-    <div class="flex justify-between items-start mb-2">
-      <div class="text-lg font-bold" id="detailTitle">Entry</div>
-      <!-- A plain character, not a Font Awesome icon: this is the only way out
-           of the modal, and the icon font comes from a CDN the farm's phones
-           can't reach. Without a route to it the icon rendered 0x0, leaving
-           the entry open with nothing to close it. -->
-      <button id="closeDetailBtn" class="text-slate-400 text-2xl leading-none px-2" aria-label="Close">&times;</button>
-    </div>
-    <div class="text-xs text-slate-400 mb-3" id="detailMeta"></div>
-    <div id="detailBlock" class="text-sm text-slate-600 mb-2"></div>
-    <div id="detailContext" class="hidden text-xs text-slate-500 mb-2"></div>
-    <div id="detailTags" class="flex flex-wrap gap-1.5 mb-3"></div>
-    <div id="detailBody" class="text-base whitespace-pre-wrap mb-4"></div>
-    <div id="detailPhotos" class="grid grid-cols-2 gap-2 mb-4"></div>
-    <div id="detailActions" class="hidden flex gap-2">
-      <button id="editEntryBtn" class="flex-1 rounded-lg py-2.5 bg-slate-100 font-semibold">Edit</button>
-      <button id="archiveEntryBtn" class="flex-1 rounded-lg py-2.5 bg-red-50 text-red-700 font-semibold">Archive</button>
     </div>
   </div>
 </div>

@@ -1,64 +1,252 @@
-/* Boord Notes shares the Boord family's look, so the palette below is Boord's
-   own frontend/shared/styles.css verbatim - same hexes, same variable names.
-   Keeping them identical is the point: the three apps sit next to each other
-   on the same home screen and are reached from the same tailnet host, so a
-   near-miss blue reads as a different product rather than a sibling. */
+/* Boord Notes - an iOS-style look: grouped inset lists on a light grey page,
+   a translucent tab bar at the bottom, large page titles, system font. It
+   follows the phone's light/dark setting.
+
+   The Boord family palette stays: --boord-blue is Boord's own navy, and is
+   this app's tint (buttons, links, the selected tab), so the three apps on
+   the home screen still read as siblings. */
 :root {
   --boord-blue: #0A2F6B;
   --boord-red: #C8102E;
   --boord-green: #16a34a;
-  --boord-yellow: #eab308;
-  /* Notes' own accent, matching its icon leaf. Not in Boord's palette - the
-     three accents there were all spoken for by Field/Receiving/Admin. */
-  --boord-sky: #38bdf8;
+
+  --tint: var(--boord-blue);
+  --tint-soft: rgba(10, 47, 107, 0.10);
+  --on-tint: #fff;
+  --bg: #F2F2F7;
+  --card: #FFFFFF;
+  --label: #1C1C1E;
+  --label-2: rgba(60, 60, 67, 0.62);
+  --label-3: rgba(60, 60, 67, 0.32);
+  --separator: rgba(60, 60, 67, 0.16);
+  --fill: rgba(118, 118, 128, 0.12);
+  --red: #FF3B30;
+  --green: #34C759;
+  --orange: #FF9500;
+  --bar: rgba(249, 249, 249, 0.86);
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Navy disappears on black; dark mode lifts the same hue. */
+    --tint: #5E9BFF;
+    --tint-soft: rgba(94, 155, 255, 0.18);
+    --bg: #000000;
+    --card: #1C1C1E;
+    --label: #FFFFFF;
+    --label-2: rgba(235, 235, 245, 0.62);
+    --label-3: rgba(235, 235, 245, 0.30);
+    --separator: rgba(84, 84, 88, 0.6);
+    --fill: rgba(118, 118, 128, 0.24);
+    --red: #FF453A;
+    --green: #30D158;
+    --orange: #FF9F0A;
+    --bar: rgba(22, 22, 24, 0.86);
+  }
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  font-size: 17px;
+  background: var(--bg);
+  color: var(--label);
+  -webkit-font-smoothing: antialiased;
+  /* Room for the tab bar and the home indicator under it. */
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
   /* Keep the browser's native pull-to-refresh out of the way. */
   overscroll-behavior-y: contain;
 }
 
-.boord-header { background: var(--boord-blue); color: white; }
-.boord-btn-primary { background: var(--boord-blue); color: white; }
-.boord-btn-primary:active { opacity: 0.85; }
-.boord-btn-danger { background: var(--boord-red); color: white; }
+/* ---- Header: app name, sync state, large page title ------------------- */
+.nav { padding: 12px 20px 6px; max-width: 42rem; margin: 0 auto; }
+.nav-app { font-size: 13px; font-weight: 600; letter-spacing: 0.02em; color: var(--label-2); text-transform: uppercase; }
+.nav-title { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
 
-.tab-btn { flex: 1; text-align: center; padding: 0.6rem 0; font-size: 0.8rem; }
-.tab-btn.active { color: var(--boord-blue); font-weight: 600; border-bottom: 3px solid var(--boord-blue); }
-
-.tag-chip {
-  display: inline-flex; align-items: center; gap: 0.25rem;
-  font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em;
-  padding: 0.15rem 0.65rem; border-radius: 999px;
-  background: #dcfce7; color: #166534;
+.badge-unsynced {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 600; color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 14%, transparent);
+  padding: 3px 10px; border-radius: 999px;
 }
-.tag-chip button { color: #16653480; }
-/* A tag that can be tapped onto the note: same shape, not yet chosen. */
-.tag-chip-pick {
-  display: inline-flex; align-items: center;
-  font-size: 0.75rem; font-weight: 600;
-  padding: 0.3rem 0.75rem; border-radius: 999px;
-  background: #fff; color: #475569; border: 1px solid #cbd5e1;
+.badge-unsynced::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--orange); }
+
+/* ---- Tab bar ------------------------------------------------------------ */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  display: flex; justify-content: space-around;
+  padding: 6px 4px env(safe-area-inset-bottom);
+  background: var(--bar);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-top: 0.5px solid var(--separator);
+}
+.tab-btn {
+  flex: 1; max-width: 96px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 2px 0 4px; color: #8E8E93;
+  font-size: 10px; font-weight: 500;
+}
+.tab-btn svg { width: 26px; height: 26px; }
+.tab-btn.active { color: var(--tint); }
+
+/* ---- Grouped lists ------------------------------------------------------ */
+.group-header {
+  font-size: 13px; color: var(--label-2); text-transform: uppercase;
+  letter-spacing: 0.02em; padding: 0 16px 6px;
+}
+.group-footer { font-size: 13px; color: var(--label-2); padding: 6px 16px 0; line-height: 1.35; }
+.group { background: var(--card); border-radius: 12px; overflow: hidden; }
+/* Hairline between rows, inset from the left like iOS lists. */
+.group > * + *, .group .row + .row {
+  background-image: linear-gradient(var(--separator), var(--separator));
+  background-size: calc(100% - 16px) 0.5px; background-position: right top; background-repeat: no-repeat;
+}
+.row {
+  display: flex; align-items: center; gap: 12px;
+  min-height: 46px; padding: 10px 16px; width: 100%; text-align: left;
+}
+.row-label { flex: 1; min-width: 0; }
+.row-detail { color: var(--label-2); font-size: 15px; flex-shrink: 0; }
+.row-sub { color: var(--label-2); font-size: 15px; }
+.chevron { width: 14px; height: 14px; color: var(--label-3); flex-shrink: 0; }
+.row.tappable:active { background-color: var(--fill); }
+.empty { padding: 14px 16px; color: var(--label-2); font-size: 15px; }
+
+/* ---- Form fields -------------------------------------------------------- */
+.input, .select, .textarea {
+  width: 100%; min-width: 0; background: transparent; color: var(--label);
+  font-size: 17px; border: 0; outline: none; padding: 0;
+}
+.input::placeholder, .textarea::placeholder { color: var(--label-3); }
+.textarea { resize: none; line-height: 1.4; }
+.select { -webkit-appearance: none; appearance: none; text-align: right; color: var(--label-2); }
+.select-wrap { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; justify-content: flex-end; }
+/* A field that stands on its own, not inside a list row. */
+.field { background: var(--fill); border-radius: 10px; padding: 9px 12px; }
+
+.search {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--fill); border-radius: 10px; padding: 8px 10px; color: var(--label-2);
+}
+.search svg { width: 17px; height: 17px; flex-shrink: 0; }
+
+/* A filter shown as a capsule menu, like iOS's filter buttons. */
+.pill-select {
+  -webkit-appearance: none; appearance: none;
+  background: var(--fill) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238E8E93' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center / 12px;
+  color: var(--label); border: 0; border-radius: 999px;
+  font-size: 15px; font-weight: 500; padding: 6px 28px 6px 14px; flex-shrink: 0;
+  max-width: 11rem; text-overflow: ellipsis;
+}
+.pill-select.on { background-color: var(--tint-soft); color: var(--tint); }
+
+/* ---- Buttons ------------------------------------------------------------ */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: 14px; font-weight: 600; font-size: 17px; padding: 14px 18px;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.btn:active { opacity: 0.7; transform: scale(0.98); }
+.btn:disabled { opacity: 0.45; }
+.btn-primary { background: var(--tint); color: var(--on-tint); }
+.btn-tinted { background: var(--tint-soft); color: var(--tint); }
+.btn-small { font-size: 15px; padding: 8px 14px; border-radius: 10px; }
+.link { color: var(--tint); font-weight: 500; }
+.link:active { opacity: 0.5; }
+.link-red { color: var(--red); font-weight: 500; }
+.link svg { width: 20px; height: 20px; }
+
+/* ---- Chips -------------------------------------------------------------- */
+.chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 15px; font-weight: 500; padding: 6px 12px; border-radius: 999px;
+  background: var(--fill); color: var(--label);
+}
+.chip-on { background: var(--tint); color: var(--on-tint); }
+.chip-on button { opacity: 0.75; font-size: 17px; line-height: 1; margin-right: -4px; }
+/* The pick list holds every tag, so it is set smaller to fit two a line. */
+#tagPick .chip, #tidyTags .chip { font-size: 14px; padding: 5px 11px; }
+.chip-sm { font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: var(--fill); color: var(--label-2); }
+
+/* ---- Photo thumbnails --------------------------------------------------- */
+.thumb { position: relative; width: 76px; height: 76px; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; }
+.thumb button {
+  position: absolute; top: -6px; right: -6px; width: 24px; height: 24px; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 16px; line-height: 24px;
+}
+.list-thumb { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+.list-thumb-empty {
+  width: 52px; height: 52px; border-radius: 8px; flex-shrink: 0;
+  background: var(--tint-soft); color: var(--tint);
+  display: flex; align-items: center; justify-content: center;
+}
+.list-thumb-empty svg { width: 24px; height: 24px; }
+
+/* ---- Dashboard tiles ---------------------------------------------------- */
+.tile { background: var(--card); border-radius: 12px; padding: 12px 14px; }
+.tile-label { font-size: 13px; color: var(--label-2); font-weight: 500; }
+.tile-value {
+  font-family: ui-rounded, -apple-system, sans-serif;
+  font-size: 32px; font-weight: 700; color: var(--tint); line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 
-.unsynced-badge {
-  background: #fef3c7; color: #92400e; font-size: 0.7rem; font-weight: 600;
-  padding: 0.2rem 0.6rem; border-radius: 999px;
-}
-
-/* Notes-only control - Boord has no toggles, so there is nothing to match. */
-.nb-switch { position: relative; display: inline-block; width: 42px; height: 24px; flex-shrink: 0; }
+/* ---- Switch (iOS size and green) ---------------------------------------- */
+.nb-switch { position: relative; display: inline-block; width: 51px; height: 31px; flex-shrink: 0; }
 .nb-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
-.nb-switch-track { position: absolute; inset: 0; background: #cbd5e1; border-radius: 999px; cursor: pointer; transition: background 0.15s; }
-.nb-switch-track::before { content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: transform 0.15s; }
-.nb-switch input:checked + .nb-switch-track { background: var(--boord-green); }
-.nb-switch input:checked + .nb-switch-track::before { transform: translateX(18px); }
-
-.toast {
-  position: fixed; bottom: 5rem; left: 50%; transform: translateX(-50%);
-  background: #111827; color: white; padding: 0.6rem 1.2rem; border-radius: 999px;
-  font-size: 0.9rem; z-index: 50; opacity: 0; transition: opacity 0.2s;
-  max-width: 90vw; text-align: center;
+.nb-switch-track { position: absolute; inset: 0; background: var(--fill); border-radius: 999px; cursor: pointer; transition: background 0.2s; }
+.nb-switch-track::before {
+  content: ""; position: absolute; width: 27px; height: 27px; left: 2px; top: 2px;
+  background: #fff; border-radius: 50%; transition: transform 0.2s;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 1px 1px rgba(0, 0, 0, 0.16);
 }
-.toast.show { opacity: 1; }
+.nb-switch input:checked + .nb-switch-track { background: var(--green); }
+.nb-switch input:checked + .nb-switch-track::before { transform: translateX(20px); }
+
+/* ---- Sheets (entry detail, photo source) -------------------------------- */
+.overlay { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.4); align-items: flex-end; justify-content: center; }
+.sheet {
+  background: var(--bg); width: 100%; max-width: 42rem;
+  border-radius: 14px 14px 0 0; max-height: 94vh; overflow-y: auto;
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: sheet-up 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.sheet-bar {
+  position: sticky; top: 0; z-index: 1; display: flex; justify-content: flex-end; align-items: center;
+  padding: 8px 16px 6px; background: var(--bg);
+}
+.grabber { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); width: 36px; height: 5px; border-radius: 3px; background: var(--label-3); }
+.action-sheet { width: 100%; max-width: 42rem; padding: 0 8px calc(8px + env(safe-area-inset-bottom)); animation: sheet-up 0.28s cubic-bezier(0.2, 0.9, 0.3, 1); }
+.action-sheet .group { border-radius: 14px; }
+.action-sheet .row { justify-content: center; font-size: 20px; color: var(--tint); min-height: 57px; }
+/* Dark sheets sit a step lighter than the page, as iOS draws them. */
+@media (prefers-color-scheme: dark) {
+  .sheet, .sheet-bar { background: #1C1C1E; }
+  .sheet .group { background: #2C2C2E; }
+}
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+/* ---- Toast -------------------------------------------------------------- */
+.toast {
+  position: fixed; left: 50%; bottom: calc(92px + env(safe-area-inset-bottom));
+  transform: translate(-50%, 8px);
+  background: rgba(30, 30, 32, 0.88); color: #fff;
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  padding: 10px 18px; border-radius: 999px;
+  font-size: 15px; font-weight: 500; z-index: 50; opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  max-width: 90vw; text-align: center; pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+details > summary { list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+details[open] .disclosure { transform: rotate(90deg); }
+.disclosure { transition: transform 0.2s; }
+
+.hide-empty:empty { display: none; }
+/* Safari right-aligns a select's shown value only with text-align-last. */
+.select { text-align-last: right; }

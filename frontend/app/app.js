@@ -1,11 +1,11 @@
 // Boord Notes: capture, browse, and offline-sync farm knowledge.
 
 let currentTags = [];
-let pendingPhotos = [];   // [{tempId, blob, filename}] - newly added, not yet synced
+let pendingPhotos = [];   // [{tempId, blob, filename, url}] - newly added, not yet synced
 let existingPhotos = [];  // [{id, filename}] - already on the server (edit mode only)
 let editingEntryId = null;
 let editingCreatedAt = null;  // the entry's original capture time, preserved across an edit
-let allTagNames = [];
+let allTags = [];       // [{name, count}] - the tag list, from the server or this phone's copy
 let allBlocks = [];     // [{id, name, variety, count}] - the block list from Settings
 let editingBlockId = null;
 
@@ -13,21 +13,32 @@ let editingBlockId = null;
 // into an HTML string below. See NB.escapeHtml in shared/api.js.
 const esc = (v) => NB.escapeHtml(v);
 
-// Anything captured on this device is safe in IndexedDB and will sync when the
-// server is reachable again, so a failed request must never be reported as
-// data loss.
-// NB.api() itself remembers an unreachable server (see
-// NB.serverLikelyReachable), so this only classifies the failure.
-function handleApiError(e) {
-  return NB.isNetworkError(e) ? "offline" : "error";
+const notesCount = (n) => `${n} ${n === 1 ? "note" : "notes"}`;
+const photoUrl = (filename) => `/photos/${encodeURIComponent(filename)}`;
+const optionHtml = (value, label = value) => `<option value="${esc(value)}">${esc(label)}</option>`;
+const CHEVRON = `<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg>`;
+
+// Shows or hides one of the full-screen sheets (they are flex containers).
+function setOverlay(id, open) {
+  const el = document.getElementById(id);
+  el.classList.toggle("hidden", !open);
+  el.classList.toggle("flex", open);
 }
 
-const serverLikelyReachable = NB.serverLikelyReachable;
+// Rebuilds a <select>'s options, keeping the chosen value while it still
+// exists, and hides it when there is nothing to choose between.
+function fillSelect(id, placeholder, options, hideWhenEmpty = true) {
+  const select = document.getElementById(id);
+  const keep = select.value;
+  select.innerHTML = optionHtml("", placeholder) + options.map(([v, l]) => optionHtml(v, l)).join("");
+  select.value = options.some(([v]) => v === keep) ? keep : "";
+  if (hideWhenEmpty) select.classList.toggle("hidden", !options.length);
+  select.classList.toggle("on", !!select.value);
+}
 
 function showApp() {
   document.getElementById("appVersion").textContent = `v${NB.VERSION}`;
-  loadTagSuggestions();
-  loadBlocks();
+  refreshLists();
   loadAiStatus();
   updateUnsyncedBadge();
   // Capture, not Dashboard: the app is opened to write a note down before it
@@ -42,10 +53,19 @@ function showApp() {
 // ---------------------------------------------------------------------
 // Tabs
 // ---------------------------------------------------------------------
+const PAGE_TITLES = { dashboard: "Dashboard", entries: "Entries", ask: "Ask the Notes", settings: "Settings" };
+
+function setPageTitle(name) {
+  document.getElementById("pageTitle").textContent =
+    name === "capture" ? (editingEntryId ? "Edit Note" : "New Note") : PAGE_TITLES[name];
+}
+
 function showPage(name) {
   document.querySelectorAll(".page").forEach((el) => el.classList.add("hidden"));
   document.getElementById(`page-${name}`).classList.remove("hidden");
   document.querySelectorAll(".tab-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === name));
+  setPageTitle(name);
+  window.scrollTo(0, 0);
   if (name === "dashboard") loadDashboard();
   if (name === "entries") loadEntries();
   if (name === "settings") { loadTagsCard(); loadBlocksCard(); loadBackups(); }
@@ -63,69 +83,60 @@ function showPage(name) {
 // the Capture screen needs them most out in the orchard with no signal - so
 // the last good copy is kept here and used whenever the server can't answer.
 // ---------------------------------------------------------------------
-function saveListCopy(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* storage full or blocked */ }
+async function fetchSavedList(path, key) {
+  try {
+    const data = await NB.api(path);
+    try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) { /* storage full or blocked */ }
+    return { data, fresh: true };
+  } catch (e) {
+    try { return { data: JSON.parse(localStorage.getItem(key)), fresh: false }; } catch (_) { return { data: null, fresh: false }; }
+  }
 }
 
-function savedListCopy(key, fallback) {
-  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch (e) { return fallback; }
+// Fetched when the app opens, comes back to the front, or has just pushed
+// notes - not on every sync tick, which would refetch both every 10 seconds.
+function refreshLists() {
+  loadTags();
+  loadBlocks();
 }
 
 // ---------------------------------------------------------------------
 // Tags
 // ---------------------------------------------------------------------
-async function loadTagSuggestions() {
-  let tags;
-  try {
-    tags = await NB.api("/api/tags");
-    saveListCopy("nb_tags_copy", tags);
-  } catch (e) {
-    handleApiError(e);
-    if (allTagNames.length) return; // offline - keep the suggestions already loaded
-    tags = savedListCopy("nb_tags_copy", []);
+// The pickers are redrawn only when the list actually changed: rebuilding a
+// picker under a thumb that is halfway through choosing is worse than useless.
+async function loadTags() {
+  const { data } = await fetchSavedList("/api/tags", "nb_tags_copy");
+  if (!data) return allTags;
+  if (JSON.stringify(data) !== JSON.stringify(allTags)) {
+    allTags = data;
+    document.getElementById("tagSuggestions").innerHTML = allTags.map((t) => optionHtml(t.name)).join("");
+    fillSelect("tagFilter", "All tags", allTags.map((t) => [t.name, `${t.name} (${t.count})`]), false);
+    renderTagChips();
   }
-  allTagNames = tags.map((t) => t.name);
-  document.getElementById("tagSuggestions").innerHTML =
-    allTagNames.map((n) => `<option value="${esc(n)}">`).join("");
-  const filterSelect = document.getElementById("tagFilter");
-  const current = filterSelect.value;
-  filterSelect.innerHTML = `<option value="">All tags</option>` +
-    tags.map((t) => `<option value="${esc(t.name)}">${esc(t.name)} (${t.count})</option>`).join("");
-  filterSelect.value = current;
+  return allTags;
+}
+
+function addCurrentTag(name) {
+  if (name && !currentTags.includes(name)) currentTags.push(name);
   renderTagChips();
 }
 
+// Listeners for these chips are bound once, on their containers, in init().
 function renderTagChips() {
-  document.getElementById("tagChips").innerHTML = currentTags.map((t, i) => `
-    <span class="tag-chip">${esc(t)} <button type="button" data-i="${i}" class="remove-tag">&times;</button></span>
-  `).join("");
-  document.querySelectorAll(".remove-tag").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      currentTags.splice(parseInt(btn.dataset.i), 1);
-      renderTagChips();
-    });
-  });
-
-  const pickable = allTagNames.filter((n) => !currentTags.includes(n));
+  document.getElementById("tagChips").innerHTML = currentTags.map((t, i) =>
+    `<span class="chip chip-on">${esc(t)}<button type="button" data-i="${i}" aria-label="Remove ${esc(t)}">&times;</button></span>`
+  ).join("");
+  const pickable = allTags.map((t) => t.name).filter((n) => !currentTags.includes(n));
   document.getElementById("tagPickWrap").classList.toggle("hidden", !pickable.length);
   document.getElementById("tagPick").innerHTML = pickable.map((n) =>
-    `<button type="button" class="tag-chip-pick" data-name="${esc(n)}">+ ${esc(n)}</button>`
+    `<button type="button" class="chip" data-name="${esc(n)}">${esc(n)}</button>`
   ).join("");
-  document.querySelectorAll("#tagPick .tag-chip-pick").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (!currentTags.includes(btn.dataset.name)) currentTags.push(btn.dataset.name);
-      renderTagChips();
-    });
-  });
 }
 
 function addTagFromInput() {
   const input = document.getElementById("tagInput");
-  const name = input.value.trim();
-  if (name && !currentTags.includes(name)) {
-    currentTags.push(name);
-    renderTagChips();
-  }
+  addCurrentTag(input.value.trim());
   input.value = "";
 }
 
@@ -135,25 +146,17 @@ function addTagFromInput() {
 // ---------------------------------------------------------------------
 const OTHER_BLOCK = "__other__";
 
+// Returns the server's full answer (with the unlisted block names) when it
+// had one, for the Settings card; the pickers only need the list.
 async function loadBlocks() {
-  let data;
-  try {
-    data = await NB.api("/api/blocks");
-    saveListCopy("nb_blocks_copy", data.blocks);
-    // The sync loop calls this every pass. Rebuilding the picker under a
-    // thumb that is halfway through choosing a block would be worse than
-    // useless, so only redraw when the list has actually changed.
-    const changed = JSON.stringify(data.blocks) !== JSON.stringify(allBlocks);
+  const { data, fresh } = await fetchSavedList("/api/blocks", "nb_blocks_copy");
+  if (!data) return null;
+  if (JSON.stringify(data.blocks) !== JSON.stringify(allBlocks)) {
     allBlocks = data.blocks;
-    if (!changed) return data;
-  } catch (e) {
-    handleApiError(e);
-    if (allBlocks.length) return; // offline - keep the list already loaded
-    allBlocks = savedListCopy("nb_blocks_copy", []);
+    renderBlockPicker();
+    renderBlockFilters();
   }
-  renderBlockPicker();
-  renderBlockFilters();
-  return data;
+  return fresh ? data : null;
 }
 
 function varietyOf(blockName) {
@@ -174,9 +177,9 @@ function varieties() {
     .sort((a, b) => a.localeCompare(b));
 }
 
-function blockPickerInUse() {
-  return !document.getElementById("entryBlockSelect").classList.contains("hidden");
-}
+const blockPickRow = () => document.getElementById("blockPickRow");
+const blockTextRow = () => document.getElementById("blockTextRow");
+const blockPickerInUse = () => !blockPickRow().classList.contains("hidden");
 
 function getCaptureBlock() {
   const select = document.getElementById("entryBlockSelect");
@@ -187,56 +190,46 @@ function getCaptureBlock() {
 function setCaptureBlock(name) {
   const select = document.getElementById("entryBlockSelect");
   const input = document.getElementById("entryBlock");
-  if (!blockPickerInUse()) { input.value = name; input.classList.remove("hidden"); return; }
-  const listed = !name || allBlocks.some((b) => b.name === name);
-  select.value = listed ? name : OTHER_BLOCK;
+  const listed = blockPickerInUse() && (!name || allBlocks.some((b) => b.name === name));
+  if (blockPickerInUse()) select.value = listed ? name : OTHER_BLOCK;
   input.value = listed ? "" : name;
-  input.classList.toggle("hidden", listed);
+  blockTextRow().classList.toggle("hidden", listed);
 }
 
 // Grouped by type, so the iPhone's picker wheel reads "TMR: 8a, 8b...".
 function renderBlockPicker() {
   const select = document.getElementById("entryBlockSelect");
   const keep = getCaptureBlock();
-  select.classList.toggle("hidden", !allBlocks.length);
+  blockPickRow().classList.toggle("hidden", !allBlocks.length);
+  document.getElementById("entryBlock").placeholder =
+    allBlocks.length ? "Where, e.g. near the pump station" : "Block or location (optional)";
   const groups = new Map();
   for (const b of allBlocks) {
     const key = b.variety || "";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(b);
   }
-  const option = (b) => `<option value="${esc(b.name)}">${esc(b.name)}</option>`;
+  const options = (list) => list.map((b) => optionHtml(b.name)).join("");
   const ordered = [...groups.keys()].sort((a, b) => (a === "") - (b === "") || a.localeCompare(b));
-  select.innerHTML = `<option value="">No block</option>` +
+  select.innerHTML = optionHtml("", "None") +
     ordered.map((v) => v
-      ? `<optgroup label="${esc(v)}">${groups.get(v).map(option).join("")}</optgroup>`
-      : groups.get(v).map(option).join("")).join("") +
-    `<option value="${OTHER_BLOCK}">Somewhere else (type it)</option>`;
+      ? `<optgroup label="${esc(v)}">${options(groups.get(v))}</optgroup>`
+      : options(groups.get(v))).join("") +
+    optionHtml(OTHER_BLOCK, "Somewhere else…");
   setCaptureBlock(keep);
 }
 
 function renderBlockFilters() {
-  const blockFilter = document.getElementById("blockFilter");
-  const varietyFilter = document.getElementById("varietyFilter");
-  const keepBlock = blockFilter.value;
-  const keepVariety = varietyFilter.value;
-  blockFilter.innerHTML = `<option value="">All blocks</option>` +
-    allBlocks.map((b) => `<option value="${esc(b.name)}">${esc(b.name)}</option>`).join("");
   const types = varieties();
-  varietyFilter.innerHTML = `<option value="">All types</option>` +
-    types.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
-  blockFilter.value = allBlocks.some((b) => b.name === keepBlock) ? keepBlock : "";
-  varietyFilter.value = types.includes(keepVariety) ? keepVariety : "";
-  blockFilter.classList.toggle("hidden", !allBlocks.length);
-  varietyFilter.classList.toggle("hidden", !types.length);
-  document.getElementById("varietySuggestions").innerHTML =
-    types.map((v) => `<option value="${esc(v)}">`).join("");
+  fillSelect("blockFilter", "All blocks", allBlocks.map((b) => [b.name, b.name]));
+  fillSelect("varietyFilter", "All types", types.map((v) => [v, v]));
+  document.getElementById("varietySuggestions").innerHTML = types.map((v) => optionHtml(v)).join("");
 }
 
 function onBlockSelectChange() {
   const other = document.getElementById("entryBlockSelect").value === OTHER_BLOCK;
   const input = document.getElementById("entryBlock");
-  input.classList.toggle("hidden", !other);
+  blockTextRow().classList.toggle("hidden", !other);
   if (other) input.focus();
   else input.value = "";
 }
@@ -270,32 +263,34 @@ function downscaleImage(file, maxDim = 1600, quality = 0.8) {
   });
 }
 
+const thumbHtml = (src, data) =>
+  `<div class="thumb"><img src="${esc(src)}" alt=""><button type="button" ${data} aria-label="Remove photo">&times;</button></div>`;
+
+// The remove buttons are handled once, on #photoThumbs, in init().
 function renderPhotoThumbs() {
-  const existing = existingPhotos.map((p) => `
-    <div class="relative">
-      <img src="/photos/${encodeURIComponent(p.filename)}" class="w-20 h-20 object-cover rounded-lg border">
-      <button type="button" data-existing="${p.id}" class="remove-photo absolute -top-2 -right-2 bg-white rounded-full w-6 h-6 shadow text-red-600 text-xs">&times;</button>
-    </div>`).join("");
-  const pending = pendingPhotos.map((p) => `
-    <div class="relative">
-      <img src="${URL.createObjectURL(p.blob)}" class="w-20 h-20 object-cover rounded-lg border">
-      <button type="button" data-pending="${p.tempId}" class="remove-photo absolute -top-2 -right-2 bg-white rounded-full w-6 h-6 shadow text-red-600 text-xs">&times;</button>
-    </div>`).join("");
-  document.getElementById("photoThumbs").innerHTML = existing + pending;
-  document.querySelectorAll(".remove-photo").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      if (btn.dataset.existing) {
-        const photoId = parseInt(btn.dataset.existing);
-        try {
-          await NB.api(`/api/entries/${editingEntryId}/photos/${photoId}`, { method: "DELETE" });
-        } catch (e) { NB.toast("Could not remove photo - try again once online"); return; }
-        existingPhotos = existingPhotos.filter((p) => p.id !== photoId);
-      } else if (btn.dataset.pending) {
-        pendingPhotos = pendingPhotos.filter((p) => p.tempId !== btn.dataset.pending);
-      }
-      renderPhotoThumbs();
-    });
-  });
+  document.getElementById("photoThumbs").innerHTML =
+    existingPhotos.map((p) => thumbHtml(photoUrl(p.filename), `data-existing="${p.id}"`)).join("") +
+    pendingPhotos.map((p) => thumbHtml(p.url, `data-pending="${p.tempId}"`)).join("");
+}
+
+// A pending photo's preview URL pins its blob in memory, so it is made once,
+// when the photo is added, and released when the photo leaves the form.
+function dropPendingPhotos(keep = () => false) {
+  for (const p of pendingPhotos) if (!keep(p)) URL.revokeObjectURL(p.url);
+  pendingPhotos = pendingPhotos.filter(keep);
+}
+
+async function removePhoto(btn) {
+  if (btn.dataset.existing) {
+    const photoId = parseInt(btn.dataset.existing);
+    try {
+      await NB.api(`/api/entries/${editingEntryId}/photos/${photoId}`, { method: "DELETE" });
+    } catch (e) { NB.toast(NB.errorMessage(e, "Could not remove photo")); return; }
+    existingPhotos = existingPhotos.filter((p) => p.id !== photoId);
+  } else if (btn.dataset.pending) {
+    dropPendingPhotos((p) => p.tempId !== btn.dataset.pending);
+  }
+  renderPhotoThumbs();
 }
 
 // Camera / album / file are three separate <input>s (see index.html): only one
@@ -307,17 +302,8 @@ const PHOTO_INPUT_IDS = {
   file: "photoInputFile",
 };
 
-function openPhotoSourceSheet() {
-  const sheet = document.getElementById("photoSourceSheet");
-  sheet.classList.remove("hidden");
-  sheet.classList.add("flex");
-}
-
-function closePhotoSourceSheet() {
-  const sheet = document.getElementById("photoSourceSheet");
-  sheet.classList.add("hidden");
-  sheet.classList.remove("flex");
-}
+const openPhotoSourceSheet = () => setOverlay("photoSourceSheet", true);
+const closePhotoSourceSheet = () => setOverlay("photoSourceSheet", false);
 
 function pickPhotoSource(source) {
   closePhotoSourceSheet();
@@ -334,7 +320,7 @@ async function handlePhotoInput(event) {
   event.target.value = "";
   for (const file of files) {
     const blob = await downscaleImage(file);
-    pendingPhotos.push({ tempId: NB.uuid(), blob, filename: `photo-${Date.now()}.jpg` });
+    pendingPhotos.push({ tempId: NB.uuid(), blob, filename: `photo-${Date.now()}.jpg`, url: URL.createObjectURL(blob) });
   }
   if (files.length) renderPhotoThumbs();
 }
@@ -389,11 +375,10 @@ function freshFix() {
 // when there's a connection: recording the weather at sync time instead would
 // describe the wrong moment entirely, so no reading is the honest answer.
 async function fetchWeatherFor(fix) {
-  if (!fix || !serverLikelyReachable()) return {};
+  if (!fix || !NB.serverLikelyReachable()) return {};
   try {
     return await NB.api(`/api/weather/current?lat=${fix.lat}&lon=${fix.lon}`) || {};
   } catch (e) {
-    handleApiError(e);
     return {};
   }
 }
@@ -403,7 +388,6 @@ async function fetchWeatherFor(fix) {
 // afterwards.
 function renderCaptureContext() {
   const el = document.getElementById("captureContext");
-  if (!el) return;
   if (!NB.getGpsEnabled()) { el.textContent = "GPS location is off - the note will save without one."; return; }
   if (!locationSupported()) { el.textContent = "This device can't provide a location."; return; }
   const fix = freshFix();
@@ -414,7 +398,7 @@ function renderCaptureContext() {
     return;
   }
   el.textContent = `📍 Location ready (±${Math.round(fix.accuracy)} m)`
-    + (serverLikelyReachable() ? " · weather will be recorded" : " · offline, no weather reading");
+    + (NB.serverLikelyReachable() ? " · weather will be recorded" : " · offline, no weather reading");
 }
 
 // ---------------------------------------------------------------------
@@ -427,13 +411,13 @@ function resetCaptureForm() {
   document.getElementById("tagInput").value = "";
   currentTags = [];
   document.getElementById("tagPickWrap").open = false;
-  pendingPhotos = [];
+  dropPendingPhotos();
   existingPhotos = [];
   hideTidyResult();
   document.getElementById("tidyHint").textContent = "";
   editingEntryId = null;
   editingCreatedAt = null;
-  document.getElementById("captureFormTitle").textContent = "New Entry";
+  setPageTitle("capture");
   document.getElementById("cancelEditBtn").classList.add("hidden");
   renderTagChips();
   renderPhotoThumbs();
@@ -507,8 +491,7 @@ async function editEntry(entry) {
   document.getElementById("entryBody").value = entry.body;
   currentTags = [...entry.tags];
   existingPhotos = [...entry.photos];
-  pendingPhotos = [];
-  document.getElementById("captureFormTitle").textContent = "Edit Entry";
+  dropPendingPhotos();
   document.getElementById("cancelEditBtn").classList.remove("hidden");
   renderTagChips();
   renderPhotoThumbs();
@@ -521,8 +504,15 @@ async function editEntry(entry) {
 // before their photos (the server's photo endpoint needs the Entry row
 // to exist first), never throws, silently retries next tick.
 // ---------------------------------------------------------------------
+// One pass at a time: the 10-second timer, the "online" event and a save can
+// each start one, and two passes over a slow link would upload the same
+// multi-megabyte photo twice. A server that just failed to answer is left
+// alone until NB.api's offline memory lapses.
+let syncing = false;
+
 async function syncLoop() {
-  if (!navigator.onLine) return;
+  if (syncing || !NB.serverLikelyReachable()) return;
+  syncing = true;
   let pushedSomething = false;
   try {
     const unsyncedEntries = await IDB.getUnsyncedEntries();
@@ -551,17 +541,19 @@ async function syncLoop() {
       }
     }
   } catch (e) { /* never let a sync failure surface as an error */ }
+  syncing = false;
 
   updateUnsyncedBadge();
-  loadTagSuggestions();
-  loadBlocks();
 
   // Anything that just reached the server changes what both screens should be
   // showing - an entry stops being "(not yet synced)" and starts counting
   // towards the Dashboard. Redraw whichever screen is actually open, so the
   // two never disagree just because the sync landed while the user was
   // looking at one of them.
-  if (pushedSomething) refreshVisiblePage();
+  if (pushedSomething) {
+    refreshLists();   // new tags, and counts, that came in with the notes
+    refreshVisiblePage();
+  }
 }
 
 function visiblePageName() {
@@ -598,32 +590,20 @@ async function updateUnsyncedBadge() {
 // has been lost.
 async function loadDashboard() {
   let stats = null;
-  let offline = false;
   try {
     stats = await NB.api("/api/entries/stats");
-  } catch (e) {
-    handleApiError(e);
-    offline = true;
-  }
-
-  // Exactly the rule the Entries list uses, so the two screens can't disagree:
-  // with a server, local means "the unsynced extras on top of it"; without
-  // one, this device's store is the whole notebook.
-  const local = offline
-    ? (await IDB.getAllEntries()).map(localEntryAsServerShape)
-    : await localUnsyncedAsEntries();
-  const merged = mergeStatsWithLocal(stats, local);
+  } catch (e) { /* offline - this phone's own notes are the whole picture */ }
+  const merged = mergeStatsWithLocal(stats, await localEntries(!stats));
 
   document.getElementById("statTotal").textContent = merged.total;
   document.getElementById("statWeek").textContent = merged.this_week;
   document.getElementById("statPhotos").textContent = merged.with_photos;
   document.getElementById("statTags").textContent = merged.tags_used;
-  document.getElementById("tagBreakdown").innerHTML = merged.tag_breakdown.map(([name, count]) => `
-    <div class="flex justify-between"><span>${esc(name)}</span><span class="text-slate-500">${count}</span></div>
-  `).join("") || `<div class="text-slate-400">No tags used yet</div>`;
+  document.getElementById("tagBreakdown").innerHTML = merged.tag_breakdown.map(([name, count]) =>
+    `<div class="row"><span class="row-label">${esc(name)}</span><span class="row-detail">${count}</span></div>`
+  ).join("") || `<div class="empty">No tags used yet</div>`;
   document.getElementById("recentEntries").innerHTML = merged.recent.map(entryCardHtml).join("") ||
-    `<div class="text-slate-400">No entries yet</div>`;
-  bindEntryCards("#recentEntries");
+    `<div class="empty">No notes yet</div>`;
 }
 
 // Folds this device's unsynced entries into the server's figures. Entries the
@@ -650,36 +630,34 @@ function mergeStatsWithLocal(stats, localEntries) {
     with_photos: base.with_photos,
     tags_used: tagCounts.size,
     tag_breakdown: [...tagCounts.entries()].sort((a, b) => b[1] - a[1]),
-    recent: [...extra, ...(base.recent || [])]
-      .sort((a, b) => NB.serverTimeMs(b.created_at) - NB.serverTimeMs(a.created_at))
-      .slice(0, 5),
+    recent: [...extra, ...(base.recent || [])].sort(byNewest).slice(0, 5),
   };
 }
 
+// Settings rows: a name, a detail on the right, and - only while no note uses
+// it - a Remove button, since the server refuses to delete one still in use.
+function settingsRowHtml(label, sub, count, removeData, extra = "") {
+  return `
+    <div class="row">
+      <span class="row-label">${esc(label)}${sub ? ` <span class="row-sub">· ${esc(sub)}</span>` : ""}</span>
+      ${count ? `<span class="row-detail">${notesCount(count)}</span>`
+              : `<button type="button" class="link-red text-[15px]" ${removeData}>Remove</button>`}
+      ${extra}
+    </div>`;
+}
+
 async function loadTagsCard() {
-  let tags;
+  const tags = await loadTags();
+  document.getElementById("tagsList").innerHTML =
+    tags.map((t) => settingsRowHtml(t.name, "", t.count, `data-remove-tag="${esc(t.name)}"`)).join("") ||
+    `<div class="empty">No tags yet</div>`;
+}
+
+async function removeTag(name) {
   try {
-    tags = await NB.api("/api/tags");
-  } catch (e) { handleApiError(e); return; } // offline - leave whatever was last shown
-  // Remove only on unused tags: the server refuses to delete one a live note
-  // still uses, so offering it there would only ever fail.
-  document.getElementById("tagsList").innerHTML = tags.map((t) => `
-    <div class="flex justify-between items-center gap-2">
-      <span>${esc(t.name)}</span>
-      ${t.count === 0
-        ? `<button type="button" data-tag="${esc(t.name)}" class="delete-tag text-red-600 text-xs font-medium">Remove</button>`
-        : `<span class="text-slate-400 text-xs">${t.count} ${t.count === 1 ? "note" : "notes"}</span>`}
-    </div>
-  `).join("") || `<div class="text-slate-400">No tags yet</div>`;
-  document.querySelectorAll("#tagsList .delete-tag").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      try {
-        await NB.api(`/api/tags/${encodeURIComponent(btn.dataset.tag)}`, { method: "DELETE" });
-        loadTagsCard();
-        loadTagSuggestions();
-      } catch (e) { NB.toast("Could not remove tag - try again once online"); }
-    });
-  });
+    await NB.api(`/api/tags/${encodeURIComponent(name)}`, { method: "DELETE" });
+    loadTagsCard();
+  } catch (e) { NB.toast(NB.errorMessage(e, "Could not remove tag")); }
 }
 
 async function createTag() {
@@ -693,11 +671,8 @@ async function createTag() {
     input.value = "";
     NB.toast(`Tag "${name}" added`);
     loadTagsCard();
-    loadTagSuggestions();
   } catch (e) {
-    if (e.status === 409) NB.toast("That tag already exists");
-    else if (e.status === 400) NB.toast("Tag name is empty or too long");
-    else NB.toast("Could not add tag - try again once online");
+    NB.toast(NB.errorMessage(e, "Could not add tag"));
   } finally {
     btn.disabled = false;
   }
@@ -706,59 +681,51 @@ async function createTag() {
 // ---------------------------------------------------------------------
 // Settings: the block list
 // ---------------------------------------------------------------------
+// The buttons in these lists are handled once, on their containers, in init().
+let lastBlocksData = null;
+
 async function loadBlocksCard() {
   const data = await loadBlocks();
   if (!data) return; // offline - leave whatever was last shown
-  document.getElementById("blocksList").innerHTML = data.blocks.map((b) => `
-    <div class="flex justify-between items-center gap-2">
-      <span class="min-w-0">${esc(b.name)}${b.variety ? ` <span class="text-slate-400">· ${esc(b.variety)}</span>` : ""}</span>
-      <span class="shrink-0 flex items-center gap-3">
-        ${b.count
-          ? `<span class="text-slate-400 text-xs">${b.count} ${b.count === 1 ? "note" : "notes"}</span>`
-          : `<button type="button" data-id="${b.id}" class="delete-block text-red-600 text-xs font-medium">Remove</button>`}
-        <button type="button" data-id="${b.id}" class="edit-block text-xs font-medium text-slate-600">Edit</button>
-      </span>
-    </div>
-  `).join("") || `<div class="text-slate-400">No blocks yet - add the first one below.</div>`;
+  lastBlocksData = data;
+  document.getElementById("blocksList").innerHTML = data.blocks.map((b) => settingsRowHtml(
+    b.name, b.variety, b.count, `data-remove-block="${b.id}"`,
+    `<button type="button" class="link text-[15px]" data-edit-block="${b.id}">Edit</button>`,
+  )).join("") || `<div class="empty">No blocks yet - add the first one below.</div>`;
 
   document.getElementById("unlistedWrap").classList.toggle("hidden", !data.unlisted.length);
   document.getElementById("unlistedList").innerHTML = data.unlisted.map((u) => `
-    <div class="flex justify-between items-center gap-2">
-      <span class="min-w-0">${esc(u.name)} <span class="text-slate-400 text-xs">· ${u.count} ${u.count === 1 ? "note" : "notes"}</span></span>
-      <button type="button" data-name="${esc(u.name)}" class="list-block shrink-0 text-xs font-medium text-slate-600">+ Add to list</button>
-    </div>
-  `).join("");
+    <div class="row">
+      <span class="row-label">${esc(u.name)} <span class="row-sub">· ${notesCount(u.count)}</span></span>
+      <button type="button" class="link text-[15px]" data-list-block="${esc(u.name)}">Add to List</button>
+    </div>`).join("");
+}
 
-  document.querySelectorAll("#blocksList .edit-block").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const block = data.blocks.find((b) => String(b.id) === btn.dataset.id);
-      editingBlockId = block.id;
-      document.getElementById("blockNameInput").value = block.name;
-      document.getElementById("blockVarietyInput").value = block.variety;
-      document.getElementById("blockFormTitle").textContent = `Edit ${block.name} - a new name is carried onto its notes`;
-      document.getElementById("blockSaveBtn").textContent = "Save block";
-      document.getElementById("blockCancelBtn").classList.remove("hidden");
-      document.getElementById("blockNameInput").focus();
-    });
-  });
-  document.querySelectorAll("#blocksList .delete-block").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      try {
-        await NB.api(`/api/blocks/${btn.dataset.id}`, { method: "DELETE" });
-        if (String(editingBlockId) === btn.dataset.id) resetBlockForm();
-        loadBlocksCard();
-      } catch (e) { NB.toast("Could not remove block - try again once online"); }
-    });
-  });
-  // Typed before the list existed: the name goes into the form, so the type
-  // can be filled in before it is added.
-  document.querySelectorAll("#unlistedList .list-block").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      resetBlockForm();
-      document.getElementById("blockNameInput").value = btn.dataset.name;
-      document.getElementById("blockVarietyInput").focus();
-    });
-  });
+function editBlock(id) {
+  const block = lastBlocksData.blocks.find((b) => String(b.id) === id);
+  editingBlockId = block.id;
+  document.getElementById("blockNameInput").value = block.name;
+  document.getElementById("blockVarietyInput").value = block.variety;
+  document.getElementById("blockFormTitle").textContent = `Edit ${block.name} - a new name moves onto its notes`;
+  document.getElementById("blockSaveBtn").textContent = "Save Block";
+  document.getElementById("blockCancelBtn").classList.remove("hidden");
+  document.getElementById("blockNameInput").focus();
+}
+
+async function removeBlock(id) {
+  try {
+    await NB.api(`/api/blocks/${id}`, { method: "DELETE" });
+    if (String(editingBlockId) === id) resetBlockForm();
+    loadBlocksCard();
+  } catch (e) { NB.toast(NB.errorMessage(e, "Could not remove block")); }
+}
+
+// Typed on notes before the list existed: the name goes into the form, so
+// the type can be filled in before it is added.
+function listBlock(name) {
+  resetBlockForm();
+  document.getElementById("blockNameInput").value = name;
+  document.getElementById("blockVarietyInput").focus();
 }
 
 function resetBlockForm() {
@@ -766,7 +733,7 @@ function resetBlockForm() {
   document.getElementById("blockNameInput").value = "";
   document.getElementById("blockVarietyInput").value = "";
   document.getElementById("blockFormTitle").textContent = "Add a block";
-  document.getElementById("blockSaveBtn").textContent = "+ Add block";
+  document.getElementById("blockSaveBtn").textContent = "Add Block";
   document.getElementById("blockCancelBtn").classList.add("hidden");
 }
 
@@ -786,9 +753,7 @@ async function saveBlock() {
     // A rename changes the block shown on notes already on screen.
     loadEntries();
   } catch (e) {
-    if (e.status === 409) NB.toast("A block with that name already exists");
-    else if (e.status === 400) NB.toast("Block name is empty or too long");
-    else NB.toast("Could not save block - try again once online");
+    NB.toast(NB.errorMessage(e, "Could not save block"));
   } finally {
     btn.disabled = false;
   }
@@ -797,26 +762,30 @@ async function saveBlock() {
 // ---------------------------------------------------------------------
 // Entries list
 // ---------------------------------------------------------------------
+const NOTE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>`;
+
+// One note as a list row. Opening it is handled for every list at once, by a
+// single listener on the document for .entry-card (see init()).
 function entryCardHtml(e) {
-  const photoThumb = e.photos.length
-    ? `<img src="/photos/${encodeURIComponent(e.photos[0].filename)}" class="w-12 h-12 object-cover rounded-lg">` : "";
-  const tags = e.tags.map((t) => `<span class="tag-chip">${esc(t)}</span>`).join(" ");
+  const thumb = e.photos.length
+    ? `<img src="${esc(photoUrl(e.photos[0].filename))}" class="list-thumb" alt="">`
+    : `<div class="list-thumb-empty">${NOTE_ICON}</div>`;
+  const tags = e.tags.map((t) => `<span class="chip-sm">${esc(t)}</span>`).join("");
+  const unsynced = e.created_by === UNSYNCED ? `<span class="badge-unsynced text-[11px] px-2 py-0">Not synced</span>` : "";
   return `
-    <button data-id="${esc(e.id)}" class="entry-card w-full text-left bg-white rounded-xl shadow p-3 flex gap-3 items-start">
-      ${photoThumb}
-      <div class="flex-1 min-w-0">
-        <div class="font-semibold text-sm truncate">${esc(e.title) || "(untitled)"}</div>
-        <div class="text-xs text-slate-500">${e.block ? esc(blockLabel(e)) + " · " : ""}${NB.fmtDate(e.created_at)}</div>
-        <div class="mt-1 flex flex-wrap gap-1">${tags}</div>
-      </div>
+    <button data-id="${esc(e.id)}" class="entry-card row tappable items-start">
+      ${thumb}
+      <span class="row-label">
+        <span class="block font-semibold truncate">${esc(e.title) || "(untitled)"}</span>
+        <span class="block row-sub truncate">${e.block ? esc(blockLabel(e)) + " · " : ""}${NB.fmtDate(e.created_at)}</span>
+        ${tags || unsynced ? `<span class="flex flex-wrap gap-1 mt-1">${unsynced}${tags}</span>` : ""}
+      </span>
+      <span class="self-center">${CHEVRON}</span>
     </button>`;
 }
 
-function bindEntryCards(containerSelector) {
-  document.querySelectorAll(`${containerSelector} .entry-card`).forEach((btn) => {
-    btn.addEventListener("click", () => showEntryDetail(btn.dataset.id));
-  });
-}
+const byNewest = (a, b) => NB.serverTimeMs(b.created_at) - NB.serverTimeMs(a.created_at);
+const UNSYNCED = "(not yet synced)";
 
 // Shapes a locally-stored entry like one from the server, so both screens can
 // render it with the same card markup.
@@ -824,7 +793,7 @@ function localEntryAsServerShape(local) {
   return {
     id: local.id, title: local.title, body: local.body, block: local.block,
     tags: local.tags || [], created_at: local.created_at, photos: [], archived: false,
-    created_by: local.synced ? "" : "(not yet synced)",
+    created_by: local.synced ? "" : UNSYNCED,
     // Carried through so a note captured out on the farm shows its location
     // and conditions straight away, not only once it has reached the server.
     latitude: local.latitude ?? null,
@@ -836,8 +805,12 @@ function localEntryAsServerShape(local) {
   };
 }
 
-async function localUnsyncedAsEntries() {
-  return (await IDB.getUnsyncedEntries()).map(localEntryAsServerShape);
+// The notes this phone holds that a screen must add to the server's: with a
+// server, only the ones not yet synced; without one, everything here is the
+// whole notebook. The Dashboard and the Entries list both use this, so the
+// two can't disagree.
+async function localEntries(offline) {
+  return (await IDB.getAllEntries()).filter((e) => offline || !e.synced).map(localEntryAsServerShape);
 }
 
 function matchesFilters(entry, q, tag, block, variety) {
@@ -866,7 +839,6 @@ async function loadEntries() {
     if (variety) qs.set("variety", variety);
     entries = await NB.api(`/api/entries?${qs.toString()}`);
   } catch (e) {
-    handleApiError(e);
     offline = true;
   }
 
@@ -887,9 +859,7 @@ async function loadEntries() {
   // entries included. Previously the local copy was only consulted when the
   // merged list came out empty, so a single unsynced capture made every
   // already-synced entry disappear from the list until the signal came back.
-  const local = offline
-    ? (await IDB.getAllEntries()).map(localEntryAsServerShape)
-    : await localUnsyncedAsEntries();
+  const local = await localEntries(offline);
 
   // Local records never went through the server's filtering, so apply the
   // same search and tag filter here or they'd ignore it.
@@ -897,11 +867,11 @@ async function loadEntries() {
   for (const entry of local) {
     if (!serverIds.has(entry.id) && matchesFilters(entry, q, tag, block, variety)) entries.push(entry);
   }
-  entries.sort((a, b) => NB.serverTimeMs(b.created_at) - NB.serverTimeMs(a.created_at));
+  entries.sort(byNewest);
 
   document.getElementById("entriesList").innerHTML = entries.map(entryCardHtml).join("");
+  document.getElementById("entriesEmpty").textContent = filtered ? "No notes match." : "No notes yet.";
   document.getElementById("entriesEmpty").classList.toggle("hidden", entries.length > 0);
-  bindEntryCards("#entriesList");
 }
 
 // ---------------------------------------------------------------------
@@ -914,7 +884,6 @@ async function showEntryDetail(id) {
   try {
     entry = await NB.api(`/api/entries/${id}`);
   } catch (e) {
-    handleApiError(e);
     // The server hasn't got this one yet (or can't be reached), but if it was
     // captured on this device we can still show it. Opening an entry you can
     // see listed must never dead-end on "check connection".
@@ -930,16 +899,13 @@ async function showEntryDetail(id) {
     `${NB.fmtDateTime(entry.created_at)}${entry.created_by ? " · " + entry.created_by : ""}`;
   document.getElementById("detailBlock").textContent = entry.block ? `📍 ${blockLabel(entry)}` : "";
   renderDetailContext(entry);
-  document.getElementById("detailTags").innerHTML = entry.tags.map((t) => `<span class="tag-chip">${esc(t)}</span>`).join("");
+  document.getElementById("detailTags").innerHTML = entry.tags.map((t) => `<span class="chip">${esc(t)}</span>`).join("");
   document.getElementById("detailBody").textContent = entry.body;
   // A locally-held entry's photos haven't been uploaded, so they have no
   // server filename yet - render them straight from the stored Blob.
-  document.getElementById("detailPhotos").innerHTML = entry.localPhotoUrls
-    ? entry.localPhotoUrls.map((url) => `<img src="${esc(url)}" class="w-full rounded-lg border">`).join("")
-    : entry.photos.map((p) => `<img src="/photos/${encodeURIComponent(p.filename)}" class="w-full rounded-lg border">`).join("");
-  document.getElementById("detailActions").classList.remove("hidden");
-  document.getElementById("detailModal").classList.remove("hidden");
-  document.getElementById("detailModal").classList.add("flex");
+  document.getElementById("detailPhotos").innerHTML = (entry.localPhotoUrls || entry.photos.map((p) => photoUrl(p.filename)))
+    .map((src) => `<img src="${esc(src)}" class="w-full aspect-square object-cover rounded-[10px]" alt="">`).join("");
+  setOverlay("detailModal", true);
 }
 
 // Where the note was taken and what it was doing at the time. Both are
@@ -948,20 +914,18 @@ async function showEntryDetail(id) {
 // printing a placeholder that reads like a real reading.
 function renderDetailContext(entry) {
   const el = document.getElementById("detailContext");
-  if (!el) return;
   const parts = [];
 
-  if (entry.weather_condition || entry.weather_temp !== null && entry.weather_temp !== undefined) {
+  if (entry.weather_condition || entry.weather_temp != null) {
     const icon = NB.weatherIcon(entry.weather_condition);
     const bits = [];
-    if (entry.weather_temp !== null && entry.weather_temp !== undefined) bits.push(`${Math.round(entry.weather_temp)}°C`);
+    if (entry.weather_temp != null) bits.push(`${Math.round(entry.weather_temp)}°C`);
     if (entry.weather_condition) bits.push(entry.weather_condition);
-    if (entry.weather_humidity !== null && entry.weather_humidity !== undefined) bits.push(`${entry.weather_humidity}% humidity`);
+    if (entry.weather_humidity != null) bits.push(`${entry.weather_humidity}% humidity`);
     parts.push(`<span><i class="fa-solid ${icon}"></i> ${bits.join(" · ")}</span>`);
   }
 
-  if (entry.latitude !== null && entry.latitude !== undefined
-      && entry.longitude !== null && entry.longitude !== undefined) {
+  if (entry.latitude != null && entry.longitude != null) {
     const lat = entry.latitude.toFixed(5);
     const lon = entry.longitude.toFixed(5);
     const accuracy = entry.location_accuracy_m
@@ -970,7 +934,7 @@ function renderDetailContext(entry) {
     // record a position at all is being able to walk back to that tree.
     parts.push(
       `<a href="https://www.google.com/maps/search/?api=1&query=${lat},${lon}"`
-      + ` target="_blank" rel="noopener" class="text-blue-700 underline">`
+      + ` target="_blank" rel="noopener" class="link">`
       + `📍 ${lat}, ${lon}</a>${accuracy}`);
   }
 
@@ -979,8 +943,9 @@ function renderDetailContext(entry) {
 }
 
 function closeDetailModal() {
-  document.getElementById("detailModal").classList.add("hidden");
-  document.getElementById("detailModal").classList.remove("flex");
+  setOverlay("detailModal", false);
+  // A note still only on this phone showed its photos from blob URLs.
+  (currentDetailEntry?.localPhotoUrls || []).forEach((url) => URL.revokeObjectURL(url));
   currentDetailEntry = null;
 }
 
@@ -991,8 +956,7 @@ async function archiveCurrentEntry() {
   try {
     await NB.api(`/api/entries/${entryId}`, { method: "DELETE" });
   } catch (e) {
-    handleApiError(e);
-    NB.toast("Could not archive - check connection");
+    NB.toast(NB.errorMessage(e, "Could not archive"));
     return;
   }
   // Drop this device's copy too, so the entry doesn't come back the next time
@@ -1010,28 +974,21 @@ async function archiveCurrentEntry() {
 // Both need the server AND its internet connection, so unlike capture they
 // simply say so when they can't run. Neither ever saves anything by itself.
 // ---------------------------------------------------------------------
-let aiEnabled = false;
 let tidySuggestion = null;   // {title, body, suggested_tags} awaiting Use this / Keep mine
 
 async function loadAiStatus() {
+  let enabled;
   try {
     const status = await NB.api("/api/ai/status");
-    aiEnabled = !!(status && status.enabled);
-  } catch (e) { handleApiError(e); return; }  // offline - leave the buttons as they were
-  document.getElementById("tidyWrap").classList.toggle("hidden", !aiEnabled);
-  document.getElementById("tabAsk").classList.toggle("hidden", !aiEnabled);
+    enabled = !!(status && status.enabled);
+  } catch (e) { return; }  // offline - leave the buttons as they were
+  document.getElementById("tidyWrap").classList.toggle("hidden", !enabled);
+  document.getElementById("tabAsk").classList.toggle("hidden", !enabled);
 }
 
 // A 503 from /api/ai/* carries a sentence written for Andre; anything else is
 // a network fault or a bug and gets a generic line.
-function aiErrorMessage(e) {
-  if (NB.isNetworkError(e)) return "Can't reach the server right now - try again when you have signal.";
-  if (e && e.status && e.message) {
-    const text = e.message.replace(/^\d+\s*/, "");
-    try { const d = JSON.parse(text).detail; if (typeof d === "string") return d; } catch (_) {}
-  }
-  return "AI help isn't working right now. Your notes are safe.";
-}
+const aiErrorMessage = (e) => NB.errorMessage(e, "AI help isn't working right now. Your notes are safe.");
 
 const AI_TIMEOUT_MS = 120000;
 
@@ -1044,7 +1001,7 @@ async function runTidy() {
   const body = document.getElementById("entryBody").value.trim();
   const hint = document.getElementById("tidyHint");
   if (!body) { NB.toast("Write or dictate some notes first"); return; }
-  if (!serverLikelyReachable()) { hint.textContent = "Needs a connection - try again later."; return; }
+  if (!NB.serverLikelyReachable()) { hint.textContent = "Needs a connection - try again later."; return; }
   const btn = document.getElementById("tidyBtn");
   btn.disabled = true;
   btn.textContent = "Tidying...";
@@ -1074,15 +1031,8 @@ async function runTidy() {
   const tags = suggestion.suggested_tags;
   document.getElementById("tidyTagsWrap").classList.toggle("hidden", !tags.length);
   document.getElementById("tidyTags").innerHTML = tags.map((t) =>
-    `<button type="button" class="tag-chip suggested-tag" data-name="${esc(t.name)}">+ ${esc(t.name)}${t.is_new ? " (new)" : ""}</button>`
+    `<button type="button" class="chip" data-name="${esc(t.name)}">+ ${esc(t.name)}${t.is_new ? " (new)" : ""}</button>`
   ).join("");
-  document.querySelectorAll("#tidyTags .suggested-tag").forEach((chip) => {
-    chip.addEventListener("click", () => {
-      if (!currentTags.includes(chip.dataset.name)) currentTags.push(chip.dataset.name);
-      renderTagChips();
-      chip.remove();
-    });
-  });
   document.getElementById("tidyResult").classList.remove("hidden");
 }
 
@@ -1096,7 +1046,7 @@ function acceptTidy() {
 async function runAsk() {
   const question = document.getElementById("askInput").value.trim();
   if (!question) { NB.toast("Type a question first"); return; }
-  if (!serverLikelyReachable()) {
+  if (!NB.serverLikelyReachable()) {
     showAskResult("Asking needs a connection to the server - try again when you have signal.", [], "");
     return;
   }
@@ -1121,11 +1071,10 @@ function showAskResult(answer, sources, foot) {
   document.getElementById("askAnswer").textContent = answer;
   document.getElementById("askSourcesWrap").classList.toggle("hidden", !sources.length);
   document.getElementById("askSources").innerHTML = sources.map((s) => `
-    <button data-id="${esc(s.id)}" class="entry-card w-full text-left bg-slate-50 rounded-lg p-2 text-sm">
-      <span class="font-semibold">${esc(s.title) || "(untitled)"}</span>
-      <span class="text-xs text-slate-500"> · ${NB.fmtDate(s.created_at)}</span>
+    <button data-id="${esc(s.id)}" class="entry-card row tappable">
+      <span class="row-label truncate">${esc(s.title) || "(untitled)"}</span>
+      <span class="row-detail">${NB.fmtDate(s.created_at)}</span>${CHEVRON}
     </button>`).join("");
-  bindEntryCards("#askSources");
   document.getElementById("askFoot").textContent = foot;
   document.getElementById("askResult").classList.remove("hidden");
 }
@@ -1139,20 +1088,17 @@ function formatBytes(bytes) {
 }
 
 async function loadBackups() {
-  const card = document.getElementById("backupsCard");
-  card.classList.remove("hidden");
   // If the phone froze the page mid-backup, triggerBackup's finally never ran
   // and the button is still greyed out. Opening Settings is the one moment we
   // know the user is looking at it, so it is where the button gets un-stuck.
   const btn = document.getElementById("backupNowBtn");
   btn.disabled = false;
-  btn.textContent = "Backup Now";
+  btn.textContent = "Back Up Now";
   let backups;
   try {
     backups = await NB.api("/api/backups");
   } catch (e) {
-    handleApiError(e);
-    document.getElementById("backupsList").innerHTML = `<div class="text-slate-400">Could not load - check connection</div>`;
+    document.getElementById("backupsList").innerHTML = `<div class="empty">Could not load - check connection</div>`;
     return;
   }
   // Not NB.fmtDateTime: a backup's created_at is the zip file's mtime in the
@@ -1160,22 +1106,18 @@ async function loadBackups() {
   // so pinning it to UTC would push it two hours late. The PC and the phones
   // share the farm's timezone, so reading it as local is right.
   document.getElementById("backupsList").innerHTML = backups.map((b) => `
-    <div class="flex justify-between items-center border-t border-slate-100 pt-2">
-      <div>
-        <div>${new Date(b.created_at).toLocaleString()}</div>
-        <div class="text-xs text-slate-400">${formatBytes(b.size_bytes)}</div>
-      </div>
-      <button type="button" data-filename="${esc(b.filename)}" class="download-backup text-blue-700 text-xs font-medium">Download</button>
-    </div>
-  `).join("") || `<div class="text-slate-400">No backups yet</div>`;
-  document.querySelectorAll(".download-backup").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      try {
-        const blob = await NB.api(`/api/backups/${encodeURIComponent(btn.dataset.filename)}/download`);
-        NB.downloadBlob(blob, btn.dataset.filename);
-      } catch (e) { NB.toast("Could not download - try again once online"); }
-    });
-  });
+    <div class="row">
+      <span class="row-label">${new Date(b.created_at).toLocaleString()}
+        <span class="block row-sub">${formatBytes(b.size_bytes)}</span></span>
+      <button type="button" data-download="${esc(b.filename)}" class="link text-[15px]">Download</button>
+    </div>`).join("") || `<div class="empty">No backups yet</div>`;
+}
+
+async function downloadBackup(filename) {
+  try {
+    const blob = await NB.api(`/api/backups/${encodeURIComponent(filename)}/download`);
+    NB.downloadBlob(blob, filename);
+  } catch (e) { NB.toast(NB.errorMessage(e, "Could not download")); }
 }
 
 // Zipping the database and every photo is not instant on the farm PC, so the
@@ -1212,7 +1154,7 @@ async function triggerBackup() {
     }
   } finally {
     btn.disabled = false;
-    btn.textContent = "Backup Now";
+    btn.textContent = "Back Up Now";
   }
 }
 
@@ -1232,6 +1174,26 @@ function init() {
     // tap with the box still empty shows where the name goes.
     document.getElementById("tagInput").focus();
   });
+  // Lists drawn as HTML strings get one listener each, on their container,
+  // rather than one per button re-bound on every redraw.
+  const onTap = (id, selector, fn) => document.getElementById(id).addEventListener("click", (e) => {
+    const el = e.target.closest(selector);
+    if (el) fn(el);
+  });
+  onTap("tagChips", "button[data-i]", (b) => { currentTags.splice(parseInt(b.dataset.i), 1); renderTagChips(); });
+  onTap("tagPick", "[data-name]", (b) => addCurrentTag(b.dataset.name));
+  onTap("tidyTags", "[data-name]", (b) => { addCurrentTag(b.dataset.name); b.remove(); });
+  onTap("photoThumbs", "button", removePhoto);
+  onTap("tagsList", "[data-remove-tag]", (b) => removeTag(b.dataset.removeTag));
+  onTap("blocksList", "[data-remove-block]", (b) => removeBlock(b.dataset.removeBlock));
+  onTap("blocksList", "[data-edit-block]", (b) => editBlock(b.dataset.editBlock));
+  onTap("unlistedList", "[data-list-block]", (b) => listBlock(b.dataset.listBlock));
+  onTap("backupsList", "[data-download]", (b) => downloadBackup(b.dataset.download));
+  document.addEventListener("click", (e) => {
+    const card = e.target.closest(".entry-card");
+    if (card) showEntryDetail(card.dataset.id);
+  });
+
   document.getElementById("newTagBtn").addEventListener("click", createTag);
   document.getElementById("newTagInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); createTag(); }
@@ -1240,6 +1202,9 @@ function init() {
   document.getElementById("photoSourceCancel").addEventListener("click", closePhotoSourceSheet);
   document.getElementById("photoSourceSheet").addEventListener("click", (e) => {
     if (e.target.id === "photoSourceSheet") closePhotoSourceSheet();  // tap the backdrop
+  });
+  document.getElementById("detailModal").addEventListener("click", (e) => {
+    if (e.target.id === "detailModal") closeDetailModal();
   });
   document.querySelectorAll(".photo-source").forEach((btn) => {
     btn.addEventListener("click", () => pickPhotoSource(btn.dataset.source));
@@ -1265,10 +1230,19 @@ function init() {
   document.getElementById("askBtn").addEventListener("click", runAsk);
   document.getElementById("cancelEditBtn").addEventListener("click", resetCaptureForm);
 
-  document.getElementById("searchInput").addEventListener("keyup", loadEntries);
-  document.getElementById("tagFilter").addEventListener("change", loadEntries);
-  document.getElementById("blockFilter").addEventListener("change", loadEntries);
-  document.getElementById("varietyFilter").addEventListener("change", loadEntries);
+  // Searched once typing pauses, not on every key - each search is a full
+  // listing from the server, and over weak signal they would pile up.
+  let searchTimer;
+  document.getElementById("searchInput").addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(loadEntries, 300);
+  });
+  ["tagFilter", "blockFilter", "varietyFilter"].forEach((id) => {
+    document.getElementById(id).addEventListener("change", (e) => {
+      e.target.classList.toggle("on", !!e.target.value);
+      loadEntries();
+    });
+  });
   document.getElementById("entryBlockSelect").addEventListener("change", onBlockSelectChange);
   document.getElementById("blockSaveBtn").addEventListener("click", saveBlock);
   document.getElementById("blockCancelBtn").addEventListener("click", resetBlockForm);
@@ -1281,6 +1255,10 @@ function init() {
 
   setInterval(syncLoop, 10000);
   window.addEventListener("online", syncLoop);
+  // Back from the background: pick up tags and blocks added on another phone.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshLists();
+  });
 
   showApp();
   syncLoop();
