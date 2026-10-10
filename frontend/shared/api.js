@@ -10,7 +10,7 @@ const NB = {
   // it's obvious at a glance whether a device's cached copy is actually up
   // to date - the service worker revalidates in the background, so a device
   // picks up new code on its second load (see frontend/app/service-worker.js).
-  VERSION: "2.13",
+  VERSION: "2.14",
 
   // Left behind by the versions that had accounts. Cleared once on load so a
   // phone that used to sign in is not carrying a stale token and role around
@@ -41,6 +41,8 @@ const NB = {
   serverLikelyReachable() {
     return navigator.onLine && (Date.now() - NB._lastNetFailAt) > NB.OFFLINE_MEMORY_MS;
   },
+  // A deliberate "try now" ignores the memory of the last failure.
+  forgetOffline() { NB._lastNetFailAt = 0; },
 
   // timeoutMs is opt-in, and deliberately so. Photo sync pushes multi-megabyte
   // uploads over rural signal and must be allowed to take as long as it takes;

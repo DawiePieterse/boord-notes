@@ -239,8 +239,17 @@ body {
 .nb-switch input:checked + .nb-switch-track::before { transform: translateX(20px); }
 
 /* ---- Sheets (entry detail, photo source) -------------------------------- */
-.overlay { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.4); align-items: flex-end; justify-content: center; }
-.overlay-top { z-index: 45; }   /* opened from on top of the detail sheet */
+/* Each sheet is a <dialog> opened with showModal() where the browser has it
+   (Escape, focus kept inside, the page behind inert, later ones on top), or
+   just the open attribute where it hasn't. The dim is on the dialog itself,
+   which fills the screen, so both ways look the same. */
+.overlay {
+  position: fixed; inset: 0; z-index: 40; width: 100%; height: 100%; max-width: none; max-height: none;
+  margin: 0; padding: 0; border: 0; color: inherit; background: rgba(0, 0, 0, 0.4);
+  display: none; align-items: flex-end; justify-content: center;
+}
+.overlay[open] { display: flex; }
+.overlay::backdrop { background: transparent; }
 .sheet {
   background: var(--sheet-bg); width: 100%; max-width: 42rem;
   border-radius: 14px 14px 0 0; max-height: 94vh; max-height: 94dvh; overflow-y: auto;

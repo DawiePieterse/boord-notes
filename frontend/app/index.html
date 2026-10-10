@@ -33,7 +33,7 @@
 <header class="nav">
   <div class="flex items-center justify-between h-6">
     <div class="nav-app">Boord Notes</div>
-    <div id="unsyncedBadgeWrap" class="hidden"><span class="badge-unsynced" id="unsyncedBadge"></span></div>
+    <button type="button" id="unsyncedBadgeWrap" class="hidden" title="Tap to sync now"><span class="badge-unsynced" id="unsyncedBadge"></span></button>
   </div>
   <h1 id="pageTitle" class="nav-title">New Note</h1>
 </header>
@@ -294,6 +294,18 @@
       </div>
     </div>
 
+    <!-- Sync looks after itself while the app is open; this is for the day
+         the badge sticks and someone wants to know why. -->
+    <div>
+      <div class="group-header">Sync</div>
+      <div class="group">
+        <div class="row"><span class="row-label">Waiting for the server</span><span id="syncWaiting" class="row-detail"></span></div>
+        <div class="row"><span class="row-label">Last synced</span><span id="syncLast" class="row-detail"></span></div>
+        <button type="button" id="syncNowBtn" class="row tappable link justify-center">Sync Now</button>
+      </div>
+      <p class="group-footer">Notes sync on their own every few seconds while the app is open and has signal. Tap Sync Now if the "not yet synced" badge sticks.</p>
+    </div>
+
     <div>
       <div class="group-header">Backups</div>
       <div class="group">
@@ -301,6 +313,12 @@
         <div id="backupsList"></div>
       </div>
       <p class="group-footer">A full backup (database and all photos) is also taken automatically every night at 2am.</p>
+    </div>
+
+    <div>
+      <div class="group-header">Archived notes</div>
+      <div id="archivedList" class="group"></div>
+      <p class="group-footer">Archived notes are hidden everywhere else but never erased. Restore puts one back as it was.</p>
     </div>
 
     <p class="text-center text-[13px] text-3">Boord Notes <span id="appVersion"></span></p>
@@ -341,7 +359,7 @@
 <!-- Photo source chooser, as an iOS action sheet: Capture is the screen Andre
      uses one-handed in an orchard, and three permanent buttons push Save Note
      below the fold on a phone. -->
-<div id="photoSourceSheet" class="overlay hidden" role="dialog" aria-modal="true" aria-label="Add a photo">
+<dialog id="photoSourceSheet" class="overlay" aria-label="Add a photo">
   <div class="action-sheet space-y-2">
     <div class="group">
       <div class="row justify-center text-[13px] text-2" style="min-height: 40px">Add a photo from</div>
@@ -351,10 +369,10 @@
     </div>
     <div class="group"><button type="button" id="photoSourceCancel" class="row tappable font-semibold">Cancel</button></div>
   </div>
-</div>
+</dialog>
 
 <!-- Marking an action done: an optional line for what was actually used -->
-<div id="doneSheet" class="overlay overlay-top hidden" role="dialog" aria-modal="true" aria-label="Mark as done">
+<dialog id="doneSheet" class="overlay" aria-label="Mark as done">
   <div class="action-sheet space-y-2">
     <div class="group">
       <div class="row flex-col gap-0" style="min-height: 64px">
@@ -362,14 +380,16 @@
         <span id="doneWhat" class="text-[17px] font-semibold text-center"></span>
       </div>
       <label class="row"><input id="doneNote" class="input text-center" enterkeyhint="done" placeholder="What was used, if different (optional)" maxlength="200"></label>
-      <button type="button" id="doneConfirmBtn" class="row tappable font-semibold">Mark Done</button>
+      <!-- autofocus: the button, not the note box above it, so opening the
+           sheet doesn't raise the keyboard for an optional line. -->
+      <button type="button" id="doneConfirmBtn" class="row tappable font-semibold" autofocus>Mark Done</button>
     </div>
     <div class="group"><button type="button" id="doneCancelBtn" class="row tappable">Cancel</button></div>
   </div>
-</div>
+</dialog>
 
 <!-- Entry detail, as a sheet from the bottom -->
-<div id="detailModal" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+<dialog id="detailModal" class="overlay" aria-labelledby="detailTitle">
   <div class="sheet">
     <div class="sheet-bar">
       <span class="grabber"></span>
@@ -395,7 +415,7 @@
       </div>
     </div>
   </div>
-</div>
+</dialog>
 
 <script src="app.js"></script>
 </body>

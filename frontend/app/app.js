@@ -20,11 +20,14 @@ const photoUrl = (filename) => `/photos/${encodeURIComponent(filename)}`;
 const optionHtml = (value, label = value) => `<option value="${esc(value)}">${esc(label)}</option>`;
 const CHEVRON = `<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg>`;
 
-// Shows or hides one of the full-screen sheets (they are flex containers).
+// Opens or closes one of the sheets (a <dialog>): modal where the browser
+// can do it - Escape, focus kept inside, the page behind inert - and a bare
+// open attribute where it can't.
 function setOverlay(id, open) {
   const el = document.getElementById(id);
-  el.classList.toggle("hidden", !open);
-  el.classList.toggle("flex", open);
+  if (open === !!el.open) return;
+  if (open) el.showModal ? el.showModal() : el.setAttribute("open", "");
+  else el.close ? el.close() : el.removeAttribute("open");
 }
 
 // Rebuilds a <select>'s options, keeping the chosen value while it still
@@ -70,7 +73,10 @@ const PAGE_LOADERS = {
   dashboard: () => loadDashboard(),
   entries: () => { loadEntries(); updateFilterFade(); },
   todo: () => loadTodo(),
-  settings: () => { loadNameCard(TAG_CARD); loadNameCard(ACTION_CARD); loadBlocksCard(); loadBackups(); },
+  settings: () => {
+    loadNameCard(TAG_CARD); loadNameCard(ACTION_CARD); loadBlocksCard();
+    renderSyncCard(); loadBackups(); loadArchivedCard();
+  },
 };
 
 function setPageTitle(name) {
@@ -607,11 +613,18 @@ async function editEntry(entry) {
 // multi-megabyte photo twice. A server that just failed to answer is left
 // alone until NB.api's offline memory lapses.
 let syncing = false;
+let lastSyncError = null;   // why the last pass left something behind, for Sync Now
 
-async function syncLoop() {
-  if (syncing || !NB.serverLikelyReachable()) return;
+// manual: a tap on Sync Now or the badge, which tries even where the last
+// request failed, and confirms the server is there when nothing is waiting.
+async function syncLoop({ manual = false } = {}) {
+  if (syncing) return;
+  if (manual) NB.forgetOffline();
+  if (!NB.serverLikelyReachable()) return;
   syncing = true;
   let pushedSomething = false;
+  let failed = false;
+  lastSyncError = null;
   try {
     // One read of the store: an entry is on the server once it was synced
     // before this pass or is pushed during it.
@@ -624,7 +637,7 @@ async function syncLoop() {
         syncedIds.add(entry.id);
         pushedSomething = true;
       } catch (e) {
-        /* leave unsynced, retry next tick */
+        failed = true; lastSyncError = e;   /* leave unsynced, retry next tick */
       }
     }
 
@@ -637,11 +650,17 @@ async function syncLoop() {
         await IDB.deletePhoto(photo.local_id);
         pushedSomething = true;
       } catch (e) {
-        /* leave unsynced, retry next tick */
+        failed = true; lastSyncError = e;   /* leave unsynced, retry next tick */
       }
     }
     if (await flushDoneQueue()) pushedSomething = true;
-  } catch (e) { /* never let a sync failure surface as an error */ }
+    // "Last reached the server": something got through, or a deliberate
+    // Sync Now with nothing to send found the server answering.
+    if (!failed && (pushedSomething || manual)) {
+      if (!pushedSomething) await NB.api("/api/health");
+      try { localStorage.setItem("nb_last_sync", new Date().toISOString()); } catch (_) { /* storage blocked */ }
+    }
+  } catch (e) { lastSyncError = e; /* never let a sync failure surface as an error */ }
   syncing = false;
 
   updateUnsyncedBadge();
@@ -676,6 +695,39 @@ async function updateUnsyncedBadge() {
     wrap.classList.remove("hidden");
   } else {
     wrap.classList.add("hidden");
+  }
+  renderSyncCard(counts);
+}
+
+// The Sync card in Settings: what is waiting, and when the server last
+// answered. Updated with the badge, so the two never disagree.
+async function renderSyncCard(counts) {
+  counts = counts || await IDB.getUnsyncedCounts();
+  const parts = [];
+  if (counts.entries) parts.push(notesCount(counts.entries));
+  if (counts.photos) parts.push(`${counts.photos} ${counts.photos === 1 ? "photo" : "photos"}`);
+  document.getElementById("syncWaiting").textContent = parts.join(", ") || "Nothing";
+  document.getElementById("syncLast").textContent = NB.fmtDateTime(localStorage.getItem("nb_last_sync"), "Not yet");
+}
+
+// Sync Now, and the badge: one pass, then a plain line on how it went.
+async function syncNow() {
+  const btn = document.getElementById("syncNowBtn");
+  if (btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = "Syncing...";
+  try {
+    if (!navigator.onLine) { NB.toast("No connection - try again when you have signal."); return; }
+    while (syncing) await new Promise((r) => setTimeout(r, 200));   // let the timer's pass finish first
+    await syncLoop({ manual: true });
+    const counts = await IDB.getUnsyncedCounts();
+    const left = counts.entries + counts.photos;
+    if (!left && !lastSyncError) NB.toast("Everything is on the server");
+    else if (!lastSyncError || NB.isNetworkError(lastSyncError)) NB.toast("Can't reach the server - try again when you have signal.");
+    else NB.toast(`${left} still waiting - the server said: ${NB.errorMessage(lastSyncError, "see the server window")}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Sync Now";
   }
 }
 
@@ -1237,7 +1289,7 @@ function closeDetailModal() {
 
 async function archiveCurrentEntry() {
   if (!currentDetailEntry) return;
-  if (!confirm(`Archive "${currentDetailEntry.title || "this entry"}"? It can be restored later if needed.`)) return;
+  if (!confirm(`Archive "${currentDetailEntry.title || "this entry"}"? It can be restored from Settings.`)) return;
   const entryId = currentDetailEntry.id;
   try {
     await NB.api(`/api/entries/${entryId}`, { method: "DELETE" });
@@ -1253,6 +1305,35 @@ async function archiveCurrentEntry() {
   updateUnsyncedBadge();
   loadEntries();
   loadDashboard();
+}
+
+// Settings: what has been archived, each with a way back.
+async function loadArchivedCard() {
+  const list = document.getElementById("archivedList");
+  let entries;
+  try {
+    entries = await NB.api("/api/entries?archived=true&slim=1&limit=50");
+  } catch (e) {
+    list.innerHTML = `<div class="empty">Could not load - check connection</div>`;
+    return;
+  }
+  list.innerHTML = entries.map((e) => `
+    <div class="row">
+      <span class="row-label">
+        <span class="block font-semibold truncate">${esc(e.title) || "(untitled)"}</span>
+        <span class="block row-sub truncate">${e.block ? esc(blockLabel(e)) + " · " : ""}${NB.fmtDate(e.created_at)}</span>
+      </span>
+      <button type="button" class="link text-[15px]" data-restore="${esc(e.id)}">Restore</button>
+    </div>`).join("") || `<div class="empty">No archived notes</div>`;
+}
+
+async function restoreEntry(id) {
+  try {
+    await NB.api(`/api/entries/${id}/restore`, { method: "POST" });
+  } catch (e) { NB.toast(NB.errorMessage(e, "Could not restore")); return; }
+  NB.toast("Note restored");
+  loadArchivedCard();
+  refreshLists();   // its tags and actions count again
 }
 
 // ---------------------------------------------------------------------
@@ -1458,10 +1539,13 @@ function init() {
   const onEnter = (id, fn) => document.getElementById(id).addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); fn(); }
   });
-  // A tap on a sheet's dimmed backdrop closes it.
-  const closeOnBackdrop = (id, close) => document.getElementById(id).addEventListener("click", (e) => {
-    if (e.target.id === id) close();
-  });
+  // A sheet closes on a tap of its dimmed backdrop, or Escape (the dialog's
+  // cancel event - stopped, so the sheet's own close runs its tidy-up).
+  const closeOnDismiss = (id, close) => {
+    const el = document.getElementById(id);
+    el.addEventListener("click", (e) => { if (e.target === el) close(); });
+    el.addEventListener("cancel", (e) => { e.preventDefault(); close(); });
+  };
   onEnter("tagInput", addTagFromInput);
   document.getElementById("addTagBtn").addEventListener("click", () => {
     addTagFromInput();
@@ -1493,6 +1577,9 @@ function init() {
   onTap("blocksList", "[data-edit-block]", (b) => editBlock(b.dataset.editBlock));
   onTap("unlistedList", "[data-list-block]", (b) => listBlock(b.dataset.listBlock));
   onTap("backupsList", "[data-download]", (b) => downloadBackup(b.dataset.download));
+  onTap("archivedList", "[data-restore]", (b) => restoreEntry(b.dataset.restore));
+  document.getElementById("syncNowBtn").addEventListener("click", syncNow);
+  document.getElementById("unsyncedBadgeWrap").addEventListener("click", syncNow);
   onTap("actionKinds", "[data-kind]", (b) => addAction(b.dataset.kind));
   document.getElementById("actionRows").addEventListener("click", actionRowTapped);
   document.getElementById("actionRows").addEventListener("input", (e) => {
@@ -1507,7 +1594,7 @@ function init() {
   });
   document.getElementById("doneConfirmBtn").addEventListener("click", confirmDone);
   document.getElementById("doneCancelBtn").addEventListener("click", () => setOverlay("doneSheet", false));
-  closeOnBackdrop("doneSheet", () => setOverlay("doneSheet", false));
+  closeOnDismiss("doneSheet", () => setOverlay("doneSheet", false));
   document.getElementById("addActionBtn").addEventListener("click", addActionFromInput);
   onEnter("actionKindInput", addActionFromInput);
   document.addEventListener("click", (e) => {
@@ -1517,16 +1604,8 @@ function init() {
 
   document.getElementById("addPhotoBtn").addEventListener("click", openPhotoSourceSheet);
   document.getElementById("photoSourceCancel").addEventListener("click", closePhotoSourceSheet);
-  closeOnBackdrop("photoSourceSheet", closePhotoSourceSheet);
-  closeOnBackdrop("detailModal", closeDetailModal);
-  // Escape closes the sheet on top (on a keyboard; phones use the backdrop).
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape") return;
-    const open = (id) => !document.getElementById(id).classList.contains("hidden");
-    if (open("doneSheet")) setOverlay("doneSheet", false);
-    else if (open("photoSourceSheet")) closePhotoSourceSheet();
-    else if (open("detailModal")) closeDetailModal();
-  });
+  closeOnDismiss("photoSourceSheet", closePhotoSourceSheet);
+  closeOnDismiss("detailModal", closeDetailModal);
   document.querySelectorAll(".photo-source").forEach((btn) => {
     btn.addEventListener("click", () => pickPhotoSource(btn.dataset.source));
   });
