@@ -2,9 +2,9 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, SQLModel, func, select
+from sqlmodel import Session, SQLModel, select
 
-from db import get_session, utcnow
+from db import get_session, live_counts, utcnow
 from models import ActionType, Entry, EntryAction, Photo
 from names import clean_name, refuse_duplicate
 from routers.entries import _varieties, action_out
@@ -20,14 +20,8 @@ class ActionTypeIn(SQLModel):
 
 
 def _live_counts(session: Session) -> dict:
-    """{kind: how many actions on live notes use it} - archived notes left
-    out, for the same reason as the tag counts (routers/tags.py)."""
-    return dict(session.exec(
-        select(EntryAction.kind, func.count())
-        .join(Entry, Entry.id == EntryAction.entry_id)
-        .where(Entry.archived == False)  # noqa: E712
-        .group_by(EntryAction.kind)
-    ).all())
+    """{kind: how many actions on live notes use it}."""
+    return live_counts(session, EntryAction.kind, (Entry, Entry.id == EntryAction.entry_id))
 
 
 @router.get("/api/action-types")

@@ -2,9 +2,9 @@ import os
 from datetime import datetime, timezone
 
 from sqlalchemy import inspect, text
-from sqlmodel import SQLModel, Session, create_engine, select
+from sqlmodel import SQLModel, Session, create_engine, func, select
 
-from models import ActionType, Tag
+from models import ActionType, Entry, Tag
 
 # NB_DATA_DIR lets the tests (and a preview) point the app at a scratch
 # folder; a real install never sets it and gets ../data as before.
@@ -89,6 +89,24 @@ def create_db_and_tables() -> None:
 def get_session():
     with Session(engine) as session:
         yield session
+
+
+def live_counts(session: Session, column, *joins, where=()) -> dict:
+    """{value of `column`: how many of them are on live notes}, in one
+    GROUP BY. `joins` are (model, on-clause) pairs leading from the column's
+    table to Entry when it isn't Entry itself.
+
+    Archived notes are excluded deliberately: these counts sit beside each
+    tag, block and action in the Entries filters, and counting archived
+    notes made a filter advertise results it would never return. It also
+    kept a name used only by archived notes from being removable in
+    Settings, so one left behind by an archived note could never be tidied
+    away."""
+    query = select(column, func.count())
+    for model, on in joins:
+        query = query.join(model, on)
+    query = query.where(Entry.archived == False, *where).group_by(column)  # noqa: E712
+    return dict(session.exec(query).all())
 
 
 def seed_defaults() -> None:

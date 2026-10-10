@@ -933,17 +933,26 @@ function matchesFilters(entry, q, tag, block, variety, action) {
     .some((field) => (field || "").toLowerCase().includes(needle));
 }
 
-async function loadEntries() {
+// The list comes a page at a time, as list rows rather than whole notes
+// (the body and photos arrive when a note is opened). Scrolling to the end
+// fetches the next page; a redraw after a sync refetches what was on screen
+// rather than snapping back to the top.
+const ENTRIES_PAGE = 50;
+let entriesShown = 0;   // server rows on screen, the offset of the next page
+
+async function loadEntries({ reset = false, more = false } = {}) {
   const q = document.getElementById("searchInput").value.trim();
   const tag = document.getElementById("tagFilter").value;
   const block = document.getElementById("blockFilter").value;
   const variety = document.getElementById("varietyFilter").value;
   const action = document.getElementById("actionFilter").value;
   const filtered = Boolean(q || tag || block || variety || action);
+  const offset = more ? entriesShown : 0;
+  const limit = more || reset ? ENTRIES_PAGE : Math.max(ENTRIES_PAGE, entriesShown);
   let entries = [];
   let offline = false;
   try {
-    const qs = new URLSearchParams();
+    const qs = new URLSearchParams({ slim: "1", limit, offset });
     if (q) qs.set("q", q);
     if (tag) qs.set("tag", tag);
     if (block) qs.set("block", block);
@@ -951,41 +960,47 @@ async function loadEntries() {
     if (action) qs.set("action", action);
     entries = await NB.api(`/api/entries?${qs.toString()}`);
   } catch (e) {
+    if (more) return;
     offline = true;
   }
+  const hasMore = !offline && entries.length === limit;
+  entriesShown = offset + entries.length;
 
-  // An unfiltered listing from the server is a complete picture of what still
-  // exists, so any entry this device has already synced but the server no
-  // longer returns has been archived - drop the local copy. Without this it
-  // would rise from the dead every time the device went offline, and the
-  // store would grow for the life of the device. Skipped when a search or tag
-  // filter is on, where "missing from the results" only means "filtered out".
-  let stored = await IDB.getAllEntries();
-  if (!offline && !filtered) {
-    const liveIds = new Set(entries.map((e) => e.id));
-    const gone = stored.filter((l) => l.synced && !liveIds.has(l.id));
-    for (const l of gone) await IDB.deleteEntry(l.id);
-    if (gone.length) stored = stored.filter((l) => !gone.includes(l));
+  if (!more) {
+    // The server's unfiltered listing is the complete picture of what still
+    // exists, as far down as it goes: an entry this device has synced that
+    // the server no longer returns above its oldest row has been archived,
+    // so the local copy is dropped. Without this it would rise from the dead
+    // every time the device went offline, and the store would grow for the
+    // life of the device. Skipped when a search or filter is on, where
+    // "missing from the results" only means "filtered out".
+    let stored = await IDB.getAllEntries();
+    if (!offline && !filtered) {
+      const liveIds = new Set(entries.map((e) => e.id));
+      const oldest = hasMore ? NB.serverTimeMs(entries[entries.length - 1].created_at) : 0;
+      const gone = stored.filter((l) => l.synced && !liveIds.has(l.id) && NB.serverTimeMs(l.created_at) >= oldest);
+      for (const l of gone) await IDB.deleteEntry(l.id);
+      if (gone.length) stored = stored.filter((l) => !gone.includes(l));
+    }
+
+    // With no server, everything this device holds is the whole truth -
+    // synced entries included. Local records never went through the server's
+    // filtering, so the same search and filters are applied here.
+    const serverIds = new Set(entries.map((e) => e.id));
+    for (const entry of await localEntries(offline, stored)) {
+      if (!serverIds.has(entry.id) && matchesFilters(entry, q, tag, block, variety, action)) entries.push(entry);
+    }
+    entries.sort(byNewest);
   }
-
-  // With no server, everything this device holds is the whole truth - synced
-  // entries included. Previously the local copy was only consulted when the
-  // merged list came out empty, so a single unsynced capture made every
-  // already-synced entry disappear from the list until the signal came back.
-  const local = await localEntries(offline, stored);
-
-  // Local records never went through the server's filtering, so apply the
-  // same search and tag filter here or they'd ignore it.
-  const serverIds = new Set(entries.map((e) => e.id));
-  for (const entry of local) {
-    if (!serverIds.has(entry.id) && matchesFilters(entry, q, tag, block, variety, action)) entries.push(entry);
-  }
-  entries.sort(byNewest);
 
   const queued = queuedMarks();
-  document.getElementById("entriesList").innerHTML = entries.map((e) => entryCardHtml(e, action, queued)).join("");
+  const html = entries.map((e) => entryCardHtml(e, action, queued)).join("");
+  const list = document.getElementById("entriesList");
+  if (more) list.insertAdjacentHTML("beforeend", html);
+  else list.innerHTML = html;
+  document.getElementById("entriesMore").classList.toggle("hidden", !hasMore);
   document.getElementById("entriesEmpty").textContent = filtered ? "No notes match." : "No notes yet.";
-  document.getElementById("entriesEmpty").classList.toggle("hidden", entries.length > 0);
+  document.getElementById("entriesEmpty").classList.toggle("hidden", list.children.length > 0);
 }
 
 // ---------------------------------------------------------------------
@@ -1527,14 +1542,21 @@ function init() {
   let searchTimer;
   document.getElementById("searchInput").addEventListener("input", () => {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(loadEntries, 300);
+    searchTimer = setTimeout(() => loadEntries({ reset: true }), 300);
   });
   ["tagFilter", "blockFilter", "varietyFilter", "actionFilter"].forEach((id) => {
     document.getElementById(id).addEventListener("change", (e) => {
       e.target.classList.toggle("on", !!e.target.value);
-      loadEntries();
+      loadEntries({ reset: true });
     });
   });
+  // The next page comes when the end of the list scrolls into view, or on a
+  // tap of the row itself.
+  const moreRow = document.getElementById("entriesMore");
+  moreRow.addEventListener("click", () => loadEntries({ more: true }));
+  new IntersectionObserver((hits) => {
+    if (hits.some((h) => h.isIntersecting) && !moreRow.classList.contains("hidden")) loadEntries({ more: true });
+  }).observe(moreRow);
   document.getElementById("entryBlockSelect").addEventListener("change", onBlockSelectChange);
   document.getElementById("blockSaveBtn").addEventListener("click", saveBlock);
   document.getElementById("blockCancelBtn").addEventListener("click", resetBlockForm);
