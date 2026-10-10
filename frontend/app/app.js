@@ -68,6 +68,18 @@ function showApp() {
 // ---------------------------------------------------------------------
 const PAGE_TITLES = { todo: "To do", dashboard: "Dashboard", entries: "Entries", ask: "Ask AI", settings: "Settings" };
 
+// The header's Refresh: the lists, then whatever page is showing.
+async function refreshAll() {
+  const btn = document.getElementById("refreshBtn");
+  if (btn.classList.contains("busy")) return;
+  btn.classList.add("busy");
+  try {
+    await Promise.all([loadTags(), loadBlocks(), loadActionTypes(), loadTodo(), PAGE_LOADERS[visiblePageName()]?.()]);
+  } finally {
+    btn.classList.remove("busy");
+  }
+}
+
 // What each page loads when it is opened, or redrawn after a sync.
 const PAGE_LOADERS = {
   dashboard: () => loadDashboard(),
@@ -1071,7 +1083,12 @@ async function loadEntries({ reset = false, more = false } = {}) {
 // on notes this phone hasn't synced yet, minus anything ticked off here that
 // hasn't reached the server.
 // ---------------------------------------------------------------------
-let todoItems = [];
+let todoItems = [];    // waiting now
+let laterItems = [];   // given a day that hasn't come
+
+// A calendar day as "YYYY-MM-DD" in this phone's own time zone.
+const localDay = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const isLater = (a) => !!a.due_on && a.due_on > localDay();
 
 async function loadTodo() {
   const { data } = await fetchSavedList("/api/actions?status=todo", "nb_todo_copy");
@@ -1082,14 +1099,33 @@ async function loadTodo() {
     ...a, entry_id: e.id, entry_title: e.title, entry_created_at: e.created_at,
     block: e.block, variety: varietyOf(e.block), photo: null,
   })));
-  todoItems = [...(data || []).filter((a) => !unsyncedIds.has(a.entry_id)), ...local]
+  const open = [...(data || []).filter((a) => !unsyncedIds.has(a.entry_id)), ...local]
     .filter((a) => !queued.has(a.id))
     .sort((a, b) => NB.serverTimeMs(a.entry_created_at) - NB.serverTimeMs(b.entry_created_at));
+  todoItems = open.filter((a) => !isLater(a));
+  laterItems = open.filter(isLater).sort((a, b) => a.due_on.localeCompare(b.due_on));
 
   const badge = document.getElementById("todoBadge");
   badge.textContent = todoItems.length;
   badge.classList.toggle("hidden", !todoItems.length);
   renderTodo();
+}
+
+const CALENDAR_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg>`;
+
+// One To do row: the tick, the action (tap for its note), a calendar to
+// give it a day. `sub` is the second line.
+function todoRowHtml(a, sub) {
+  return `
+    <div class="row items-start">
+      <button type="button" class="check mt-0.5" data-done="${esc(a.id)}" data-entry="${esc(a.entry_id)}" aria-label="Mark done"></button>
+      <button type="button" class="entry-card row-label text-left" data-id="${esc(a.entry_id)}">
+        <span class="block font-semibold">${esc(actionText(a))}</span>
+        <span class="block row-sub truncate">${sub}</span>
+      </button>
+      ${a.photo ? `<img src="${esc(photoUrl(a.photo))}" class="list-thumb list-thumb-sm" alt="" loading="lazy">` : ""}
+      <button type="button" class="icon-round plain" data-due="${esc(a.id)}" data-entry="${esc(a.entry_id)}" aria-label="Do it later">${CALENDAR_ICON}</button>
+    </div>`;
 }
 
 function renderTodo() {
@@ -1102,19 +1138,54 @@ function renderTodo() {
   document.getElementById("todoList").innerHTML = [...groups].map(([block, items]) => `
     <div>
       <div class="group-header normal-case">${esc(block)}</div>
-      <div class="group">${items.map((a) => `
-        <div class="row items-start">
-          <button type="button" class="check mt-0.5" data-done="${esc(a.id)}" data-entry="${esc(a.entry_id)}" aria-label="Mark done"></button>
-          <button type="button" class="entry-card row-label text-left" data-id="${esc(a.entry_id)}">
-            <span class="block font-semibold">${esc(actionText(a))}</span>
-            <span class="block row-sub truncate">${esc(a.entry_title) || "(untitled)"} · ${NB.fmtDate(a.entry_created_at)}</span>
-          </button>
-          ${a.photo ? `<img src="${esc(photoUrl(a.photo))}" class="list-thumb list-thumb-sm" alt="" loading="lazy">` : ""}
-        </div>`).join("")}
+      <div class="group">${items.map((a) =>
+        todoRowHtml(a, `${esc(a.entry_title) || "(untitled)"} · ${NB.fmtDate(a.entry_created_at)}`)).join("")}
       </div>
     </div>`).join("");
-  document.getElementById("todoEmpty").classList.toggle("hidden", todoItems.length > 0);
+  document.getElementById("todoEmpty").classList.toggle("hidden", todoItems.length > 0 || laterItems.length > 0);
+  document.getElementById("todoLaterWrap").classList.toggle("hidden", !laterItems.length);
+  document.getElementById("todoLater").innerHTML = laterItems.map((a) =>
+    todoRowHtml(a, `${NB.fmtDate(a.due_on)}${a.block ? ` · ${esc(blockLabel(a))}` : ""} · ${esc(a.entry_title) || "(untitled)"}`)).join("");
 }
+
+// ---- Giving an action a day --------------------------------------------
+let dueTarget = null;   // {actionId, entryId} the open "Do it later" sheet is for
+
+function openDueSheet(actionId, entryId) {
+  const action = [...todoItems, ...laterItems].find((a) => a.id === actionId);
+  if (!action) return;
+  dueTarget = { actionId, entryId };
+  document.getElementById("dueWhat").textContent = actionText(action);
+  document.getElementById("dueDate").value = action.due_on || "";
+  document.getElementById("dueDate").min = localDay();
+  document.getElementById("dueClearBtn").classList.toggle("hidden", !action.due_on);
+  setOverlay("dueSheet", true);
+}
+
+// A note still only on this phone carries the day itself and syncs it with
+// the note; one on the server is told directly, which needs a connection.
+async function setDue(dueOn) {
+  if (!dueTarget) return;
+  const { actionId, entryId } = dueTarget;
+  setOverlay("dueSheet", false);
+  dueTarget = null;
+  const local = await IDB.getEntry(entryId);
+  const own = local && !local.synced && (local.actions || []).find((a) => a.id === actionId);
+  if (own) {
+    own.due_on = dueOn;
+    await IDB.addEntry(local);
+  } else {
+    if (!NB.serverLikelyReachable()) { NB.toast("Needs a connection - try again when you have signal."); return; }
+    try {
+      await NB.api(`/api/actions/${encodeURIComponent(actionId)}`, { method: "PATCH", body: { due_on: dueOn } });
+    } catch (e) { NB.toast(NB.errorMessage(e, "Could not set the day")); return; }
+  }
+  NB.toast(dueOn ? `Set for ${NB.fmtDate(dueOn)}` : "Back on the list");
+  await loadTodo();
+  syncLoop();
+}
+
+const dayFromNow = (days) => { const d = new Date(); d.setDate(d.getDate() + days); return localDay(d); };
 
 // Marks waiting to reach the server, kept on the phone so ticking a job off
 // works out in the orchard: [{action_id, entry_id, done_at, done_note}].
@@ -1235,7 +1306,8 @@ function renderDetailActions(entry) {
   const queued = queuedMarks();
   document.getElementById("detailTodo").innerHTML = (entry.actions || []).map((a) => {
     const done = doneMark(a, queued);
-    const when = done ? `Done ${NB.fmtDate(done.done_at)}${done.done_note ? ` · ${esc(done.done_note)}` : ""}` : "To do";
+    const when = done ? `Done ${NB.fmtDate(done.done_at)}${done.done_note ? ` · ${esc(done.done_note)}` : ""}`
+      : a.due_on ? `To do · ${NB.fmtDate(a.due_on)}` : "To do";
     return `
       <div class="row">
         ${done ? `<span class="check on"></span>`
@@ -1578,6 +1650,7 @@ function init() {
   onTap("unlistedList", "[data-list-block]", (b) => listBlock(b.dataset.listBlock));
   onTap("backupsList", "[data-download]", (b) => downloadBackup(b.dataset.download));
   onTap("archivedList", "[data-restore]", (b) => restoreEntry(b.dataset.restore));
+  document.getElementById("refreshBtn").addEventListener("click", refreshAll);
   document.getElementById("syncNowBtn").addEventListener("click", syncNow);
   document.getElementById("unsyncedBadgeWrap").addEventListener("click", syncNow);
   onTap("actionKinds", "[data-kind]", (b) => addAction(b.dataset.kind));
@@ -1593,6 +1666,16 @@ function init() {
     if (tick) openDoneSheet(tick.dataset.done, tick.dataset.entry);
   });
   document.getElementById("doneConfirmBtn").addEventListener("click", confirmDone);
+  document.addEventListener("click", (e) => {
+    const cal = e.target.closest("[data-due]");
+    if (cal) openDueSheet(cal.dataset.due, cal.dataset.entry);
+  });
+  document.querySelectorAll("#dueSheet [data-due-days]").forEach((b) =>
+    b.addEventListener("click", () => setDue(dayFromNow(parseInt(b.dataset.dueDays)))));
+  document.getElementById("dueDate").addEventListener("change", (e) => { if (e.target.value) setDue(e.target.value); });
+  document.getElementById("dueClearBtn").addEventListener("click", () => setDue(null));
+  document.getElementById("dueCancelBtn").addEventListener("click", () => setOverlay("dueSheet", false));
+  closeOnDismiss("dueSheet", () => setOverlay("dueSheet", false));
   document.getElementById("doneCancelBtn").addEventListener("click", () => setOverlay("doneSheet", false));
   closeOnDismiss("doneSheet", () => setOverlay("doneSheet", false));
   document.getElementById("addActionBtn").addEventListener("click", addActionFromInput);

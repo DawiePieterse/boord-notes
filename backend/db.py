@@ -81,9 +81,57 @@ def _add_missing_columns() -> None:
             print(f"[migration] {table.name}: added index {index.name}")
 
 
+# Full-text search over notes. FTS5 ships with the SQLite in every CPython
+# build this app runs on; should one lack it, the flag stays False and the
+# entries route falls back to plain matching, so search never breaks.
+FTS_READY = False
+
+_FTS_DDL = [
+    'CREATE VIRTUAL TABLE IF NOT EXISTS entry_fts USING fts5('
+    'id UNINDEXED, title, body, block, tokenize="unicode61 remove_diacritics 2")',
+    'CREATE TRIGGER IF NOT EXISTS entry_fts_ai AFTER INSERT ON entry BEGIN '
+    'INSERT INTO entry_fts(id, title, body, block) VALUES (new.id, new.title, new.body, new.block); END',
+    'CREATE TRIGGER IF NOT EXISTS entry_fts_ad AFTER DELETE ON entry BEGIN '
+    'DELETE FROM entry_fts WHERE id = old.id; END',
+    'CREATE TRIGGER IF NOT EXISTS entry_fts_au AFTER UPDATE OF title, body, block ON entry BEGIN '
+    'DELETE FROM entry_fts WHERE id = old.id; '
+    'INSERT INTO entry_fts(id, title, body, block) VALUES (new.id, new.title, new.body, new.block); END',
+]
+
+
+def ensure_fts() -> None:
+    """Create the search index and the triggers that keep it current; fill
+    it from the notes already there the first time."""
+    global FTS_READY
+    try:
+        with engine.begin() as conn:
+            fresh = conn.exec_driver_sql(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'entry_fts'").first() is None
+            for ddl in _FTS_DDL:
+                conn.exec_driver_sql(ddl)
+            if fresh:
+                conn.exec_driver_sql(
+                    "INSERT INTO entry_fts(id, title, body, block) SELECT id, title, body, block FROM entry")
+                print("[search] full-text index built")
+        FTS_READY = True
+    except Exception as e:  # noqa: BLE001 - whatever SQLite objects to, search still works
+        FTS_READY = False
+        print(f"[search] full-text index unavailable ({e}); using plain matching")
+
+
+def fts_match(q: str):
+    """The ids of the notes matching every word of `q` at a word start, as a
+    subquery. Each word is quoted, so punctuation in a search can't reach
+    the FTS5 query syntax."""
+    terms = [t for t in q.split() if t]
+    match = " ".join('"{}"*'.format(t.replace('"', '""')) for t in terms)
+    return select(text("id")).select_from(text("entry_fts")).where(text("entry_fts MATCH :m")).params(m=match)
+
+
 def create_db_and_tables() -> None:
     SQLModel.metadata.create_all(engine)
     _add_missing_columns()
+    ensure_fts()
 
 
 def get_session():

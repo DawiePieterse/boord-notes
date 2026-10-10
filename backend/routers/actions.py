@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -82,16 +82,17 @@ def list_actions(status: str = "todo", session: Session = Depends(get_session)):
 
 
 class ActionUpdate(SQLModel):
-    status: str
+    status: Optional[str] = None       # "done" or "todo"; left out, the status stays
     done_at: Optional[datetime] = None
     done_note: str = ""
+    due_on: Optional[date] = None      # sent as null to clear; left out, unchanged
 
 
 @router.patch("/api/actions/{action_id}")
 def update_action(action_id: str, payload: ActionUpdate, session: Session = Depends(get_session)):
-    """Mark an action done (or back to do) without resending its whole note.
-    done_at is the phone's own time, so a job ticked off out of signal is
-    dated when it was done, not when it synced."""
+    """Mark an action done (or back to do), or give it a day, without
+    resending its whole note. done_at is the phone's own time, so a job
+    ticked off out of signal is dated when it was done, not when it synced."""
     action = session.get(EntryAction, action_id)
     if not action:
         raise HTTPException(404, "Action not found")
@@ -99,8 +100,10 @@ def update_action(action_id: str, payload: ActionUpdate, session: Session = Depe
         action.status = "done"
         action.done_at = payload.done_at or utcnow()
         action.done_note = payload.done_note.strip()
-    else:
+    elif payload.status is not None:
         action.status, action.done_at, action.done_note = "todo", None, ""
+    if "due_on" in payload.model_fields_set:
+        action.due_on = payload.due_on
     session.add(action)
     session.commit()
     return action_out(action)

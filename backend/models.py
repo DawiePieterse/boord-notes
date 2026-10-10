@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from sqlmodel import Field, SQLModel
@@ -60,6 +60,8 @@ class EntryAction(SQLModel, table=True):
     status: str = "todo"       # "todo" or "done"
     done_at: Optional[datetime] = None
     done_note: str = ""        # what was actually used, if it differed
+    # Not before this day: the To do list parks it under "Later" until then.
+    due_on: Optional[date] = None
 
 
 class EntryTagLink(SQLModel, table=True):

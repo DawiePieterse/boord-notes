@@ -207,7 +207,17 @@ body {
   background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 16px; line-height: 24px;
 }
 /* Small round controls keep their look but get a finger-sized hit area. */
-.thumb button::after, .check::after { content: ""; position: absolute; inset: -10px; }
+.thumb button::after, .check::after, .icon-round::after { content: ""; position: absolute; inset: -10px; }
+/* A round icon button: the header's Refresh, the calendar on a To do row. */
+.icon-round {
+  position: relative; width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--tint); background: var(--tint-soft);
+}
+.icon-round svg { width: 18px; height: 18px; }
+.icon-round.plain { background: transparent; color: var(--label-3); }
+.icon-round.busy svg { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .list-thumb { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
 .list-thumb-sm { width: 44px; height: 44px; }
 .list-thumb-empty {

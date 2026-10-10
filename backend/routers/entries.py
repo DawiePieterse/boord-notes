@@ -2,7 +2,8 @@ import os
 import re
 import shutil
 import uuid as uuid_lib
-from datetime import datetime, timedelta
+import db
+from datetime import date, datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
@@ -21,6 +22,7 @@ class ActionIn(SQLModel):
     status: str = "todo"
     done_at: Optional[datetime] = None
     done_note: str = ""
+    due_on: Optional[date] = None
 
 
 class EntryIn(SQLModel):
@@ -111,6 +113,7 @@ def _save_actions(session: Session, entry_id: str, actions: List[ActionIn]) -> N
         row.status = status
         row.done_at = (a.done_at or row.done_at or utcnow()) if status == "done" else None
         row.done_note = a.done_note.strip() if status == "done" else ""
+        row.due_on = a.due_on
         session.add(row)
         keep.add(a.id)
     for action_id, row in existing.items():
@@ -129,7 +132,7 @@ def actions_by_entry(session: Session, entry_ids: list) -> dict:
 
 def action_out(a: EntryAction) -> dict:
     return {"id": a.id, "kind": a.kind, "detail": a.detail, "status": a.status,
-            "done_at": a.done_at, "done_note": a.done_note}
+            "done_at": a.done_at, "done_note": a.done_note, "due_on": a.due_on}
 
 
 def _tag_names_by_entry(session: Session, entry_ids: list) -> dict:
@@ -224,11 +227,14 @@ def list_entries(q: str = "", tag: str = "", block: str = "", variety: str = "",
     if variety:
         query = query.where(Entry.block.in_(
             [n for n, v in _varieties(session).items() if v == variety]))
+    # Full-text search where SQLite has FTS5 (word starts, any case, with or
+    # without the Afrikaans diacritics - "spuit" finds "Spuitprogram" and
+    # "ge" finds "gé"). Without it, a plain substring match in Python: not
+    # SQL LIKE, whose case folding is ASCII-only and misses ë and é.
+    if q and db.FTS_READY:
+        query = query.where(Entry.id.in_(db.fts_match(q)))
     entries = session.exec(query).all()
-    # Filtered in Python, not SQL LIKE - SQLite's default LIKE collation is
-    # ASCII-only case-insensitive and mishandles Afrikaans diacritics (ë, é)
-    # that dictated notes will contain. Fine at this data scale.
-    if q:
+    if q and not db.FTS_READY:
         needle = q.lower()
         entries = [e for e in entries if needle in e.title.lower() or needle in e.body.lower()
                    or needle in e.block.lower()]
