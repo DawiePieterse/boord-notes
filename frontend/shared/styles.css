@@ -156,6 +156,14 @@ body {
   max-width: 11rem; text-overflow: ellipsis;
 }
 .pill-select.on { background-color: var(--tint-soft); color: var(--tint); }
+/* The row of filter pills: no scrollbar, and a fade on the right while more
+   pills sit off-screen (the class is set from app.js). */
+.filters { scrollbar-width: none; }
+.filters::-webkit-scrollbar { display: none; }
+.filters.more-right {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+}
 
 /* ---- Buttons ------------------------------------------------------------ */
 .btn {

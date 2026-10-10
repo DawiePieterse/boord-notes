@@ -449,7 +449,7 @@ the most recent entries.
 
 Search by title, notes text, or block/location, and/or filter by a tag, a
 block, a type (every block of that variety), or an action. With an action
-chosen, each note also shows how that action stands - "✓ Fertilise with LAN ·
+chosen, each note also shows how that action stands - "✓ Fertilise: LAN ·
 21 Aug", or "○ to do" - so the action and block filters together give a
 block's history: choose **8a** and **Fertilise** to see every fertilising of
 8a, when it was done and with what. The block and type filters

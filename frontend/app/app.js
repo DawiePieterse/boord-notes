@@ -36,6 +36,14 @@ function fillSelect(id, placeholder, options, hideWhenEmpty = true) {
   select.value = options.some(([v]) => v === keep) ? keep : "";
   if (hideWhenEmpty) select.classList.toggle("hidden", !options.length);
   select.classList.toggle("on", !!select.value);
+  if (select.closest("#entryFilters")) updateFilterFade();
+}
+
+// The filter pills scroll sideways on a phone; the right edge fades while
+// there are more off-screen, so the row doesn't look like it ends at the cut.
+function updateFilterFade() {
+  const el = document.getElementById("entryFilters");
+  el.classList.toggle("more-right", el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
 }
 
 function showApp() {
@@ -60,7 +68,7 @@ const PAGE_TITLES = { todo: "To do", dashboard: "Dashboard", entries: "Entries",
 // What each page loads when it is opened, or redrawn after a sync.
 const PAGE_LOADERS = {
   dashboard: () => loadDashboard(),
-  entries: () => loadEntries(),
+  entries: () => { loadEntries(); updateFilterFade(); },
   todo: () => loadTodo(),
   settings: () => { loadNameCard(TAG_CARD); loadNameCard(ACTION_CARD); loadBlocksCard(); loadBackups(); },
 };
@@ -171,7 +179,9 @@ function renderActionKinds() {
     `<button type="button" class="chip" data-kind="${esc(t.name)}">+ ${esc(t.name)}</button>`).join("");
 }
 
-const actionText = (a) => a.detail ? `${a.kind} with ${a.detail}` : a.kind;
+// "Fertilise: LAN 150 kg/ha". A colon, not "with": the detail is a product
+// for Spray but a place or a target for Scout, and the colon reads for both.
+const actionText = (a) => a.detail ? `${a.kind}: ${a.detail}` : a.kind;
 
 function renderActionRows() {
   document.getElementById("actionRows").innerHTML = currentActions.map((a) => `
@@ -862,7 +872,7 @@ const NOTE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 // One note as a list row. Opening it is handled for every list at once, by a
 // single listener on the document for .entry-card (see init()).
 // With the action filter on, a card also says how that action stands on the
-// note - "✓ Fertilise with LAN · 9 Oct" - so the list reads as the history.
+// note - "✓ Fertilise: LAN · 9 Oct" - so the list reads as the history.
 function actionStateHtml(e, kind, queued) {
   return (e.actions || []).filter((a) => a.kind === kind).map((a) => {
     const done = doneMark(a, queued);
@@ -1550,6 +1560,8 @@ function init() {
       loadEntries({ reset: true });
     });
   });
+  document.getElementById("entryFilters").addEventListener("scroll", updateFilterFade, { passive: true });
+  window.addEventListener("resize", updateFilterFade);
   // The next page comes when the end of the list scrolls into view, or on a
   // tap of the row itself.
   const moreRow = document.getElementById("entriesMore");
