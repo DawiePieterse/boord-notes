@@ -64,6 +64,13 @@ def root_redirect():
     return RedirectResponse("/app/")
 
 
+@app.get("/api/health")
+def health():
+    """The cheapest possible answer, for the app's Sync Now to confirm the
+    server can be reached when there is nothing to push."""
+    return {"ok": True}
+
+
 app.mount("/photos", StaticFiles(directory=PHOTOS_DIR), name="photos")
 
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")

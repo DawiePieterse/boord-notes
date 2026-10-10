@@ -45,9 +45,9 @@ async function seed() {
     await page.click(".tab-btn[data-tab=entries]");
     await page.waitForSelector("#entriesList .entry-card");
     await page.click("#entriesList .entry-card");
-    await page.waitForSelector("#detailModal:not(.hidden)");
+    await page.waitForSelector("#detailModal[open]");
     await page.keyboard.press("Escape");
-    if (!await page.$eval("#detailModal", (el) => el.classList.contains("hidden"))) {
+    if (await page.$eval("#detailModal", (el) => el.open)) {
       problems.push(`${name}: Escape did not close the detail sheet`);
     }
     await ctx.close();

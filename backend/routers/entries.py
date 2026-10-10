@@ -312,6 +312,18 @@ def archive_entry(entry_id: str, session: Session = Depends(get_session)):
     return {"ok": True}
 
 
+@router.post("/{entry_id}/restore")
+def restore_entry(entry_id: str, session: Session = Depends(get_session)):
+    """Back from the archive (Settings lists what is there)."""
+    entry = session.get(Entry, entry_id)
+    if not entry:
+        raise HTTPException(404, "Entry not found")
+    entry.archived = False
+    session.add(entry)
+    session.commit()
+    return _entry_out(session, entry)
+
+
 @router.post("/{entry_id}/photos")
 def upload_photo(entry_id: str, file: UploadFile, caption: str = "",
                   session: Session = Depends(get_session)):

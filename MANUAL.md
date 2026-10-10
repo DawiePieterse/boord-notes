@@ -546,9 +546,13 @@ other phones the next time they're connected.
 
 From an entry's detail view: **Edit** reopens it in the Capture form with
 everything filled in; **Archive** soft-deletes it (it stops appearing in
-lists, but nothing is actually erased from the database - there is
-currently no in-app "restore an archived entry" option, so archive is meant
-for genuine mistakes, not routine cleanup).
+lists, but nothing is erased from the database). Settings lists the
+archived notes, each with a **Restore** button that puts it back as it was.
+
+Settings also has a **Sync** card: what is still waiting on this phone, when
+the server last answered, and **Sync Now** for the day the "not yet synced"
+badge sticks (tapping the badge does the same). It says plainly whether the
+server could not be reached or refused something.
 
 ---
 
