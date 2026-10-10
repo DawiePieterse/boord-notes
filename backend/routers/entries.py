@@ -6,9 +6,9 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
-from sqlmodel import Session, SQLModel, select
+from sqlmodel import Session, SQLModel, func, select
 
-from db import PHOTOS_DIR, get_session, utcnow
+from db import PHOTOS_DIR, get_session, live_counts, utcnow
 from models import ActionType, Block, Entry, EntryAction, EntryTagLink, Photo, Tag, User
 
 router = APIRouter(prefix="/api/entries", tags=["entries"])
@@ -144,9 +144,15 @@ def _tag_names_by_entry(session: Session, entry_ids: list) -> dict:
     return names
 
 
-def _entries_out(session: Session, entries: list) -> list[dict]:
+# What a list row shows of a note: everything but its body, location and
+# weather (the detail view fetches the full note), and its first photo only.
+SLIM_KEYS = ("id", "title", "block", "variety", "tags", "actions", "created_at", "created_by",
+             "archived", "photos")
+
+
+def _entries_out(session: Session, entries: list, slim: bool = False) -> list[dict]:
     """API shape for many entries: tags, photos and authors fetched with one
-    query each rather than three per entry."""
+    query each rather than three per entry. `slim` keeps only SLIM_KEYS."""
     ids = [e.id for e in entries]
     tag_names = _tag_names_by_entry(session, ids)
     photos: dict = {}
@@ -185,9 +191,9 @@ def _entries_out(session: Session, entries: list) -> list[dict]:
             "weather_humidity": entry.weather_humidity,
             "weather_condition": entry.weather_condition,
             "photos": [{"id": p.id, "filename": p.filename, "caption": p.caption}
-                       for p in photos.get(entry.id, [])],
+                       for p in photos.get(entry.id, [])[:1 if slim else None]],
         })
-    return out
+    return [{k: row[k] for k in SLIM_KEYS} for row in out] if slim else out
 
 
 def _varieties(session: Session) -> dict:
@@ -201,8 +207,11 @@ def _entry_out(session: Session, entry: Entry) -> dict:
 
 @router.get("")
 def list_entries(q: str = "", tag: str = "", block: str = "", variety: str = "", action: str = "",
-                  archived: bool = False, session: Session = Depends(get_session)):
-    query = select(Entry).where(Entry.archived == archived)
+                  archived: bool = False, slim: bool = False, limit: int = 0, offset: int = 0,
+                  session: Session = Depends(get_session)):
+    """Newest first. `limit` and `offset` page the list (0 = everything);
+    `slim` returns list rows (see SLIM_KEYS) rather than whole notes."""
+    query = select(Entry).where(Entry.archived == archived).order_by(Entry.created_at.desc())
     if action:
         # Notes with an action of that kind, to do or done - with the block
         # filter this is a block's history: every fertilising of 8a.
@@ -223,29 +232,29 @@ def list_entries(q: str = "", tag: str = "", block: str = "", variety: str = "",
         needle = q.lower()
         entries = [e for e in entries if needle in e.title.lower() or needle in e.body.lower()
                    or needle in e.block.lower()]
-    results = _entries_out(session, entries)
-    results.sort(key=lambda r: r["created_at"], reverse=True)
-    return results
+    if limit > 0:
+        entries = entries[offset:offset + limit]
+    return _entries_out(session, entries, slim=slim)
 
 
 @router.get("/stats")
 def entry_stats(session: Session = Depends(get_session)):
-    entries = session.exec(select(Entry).where(Entry.archived == False)).all()  # noqa: E712
-    week_ago = utcnow() - timedelta(days=7)
-    with_photos_ids = set(session.exec(select(Photo.entry_id).distinct()).all())
-    tag_names = _tag_names_by_entry(session, [e.id for e in entries])
-    tag_counts: dict = {}
-    for e in entries:
-        for name in tag_names.get(e.id, []):
-            tag_counts[name] = tag_counts.get(name, 0) + 1
-    recent = sorted(entries, key=lambda e: e.created_at, reverse=True)[:5]
+    """Counted in SQL: the notebook is never loaded to be counted."""
+    live = Entry.archived == False  # noqa: E712
+    count = lambda *where: session.exec(select(func.count()).select_from(Entry).where(live, *where)).one()  # noqa: E731
+    tag_counts = live_counts(session, Tag.name,
+                             (EntryTagLink, EntryTagLink.tag_id == Tag.id),
+                             (Entry, Entry.id == EntryTagLink.entry_id))
+    recent = session.exec(select(Entry).where(live).order_by(Entry.created_at.desc()).limit(5)).all()
     return {
-        "total": len(entries),
-        "this_week": sum(1 for e in entries if e.created_at >= week_ago),
-        "with_photos": sum(1 for e in entries if e.id in with_photos_ids),
+        "total": count(),
+        "this_week": count(Entry.created_at >= utcnow() - timedelta(days=7)),
+        "with_photos": session.exec(
+            select(func.count(func.distinct(Photo.entry_id)))
+            .join(Entry, Entry.id == Photo.entry_id).where(live)).one(),
         "tags_used": len(tag_counts),
         "tag_breakdown": sorted(tag_counts.items(), key=lambda kv: kv[1], reverse=True),
-        "recent": _entries_out(session, recent),
+        "recent": _entries_out(session, recent, slim=True),
     }
 
 

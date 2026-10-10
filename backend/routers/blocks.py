@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, SQLModel, func, select
+from sqlmodel import Session, SQLModel, select
 
-from db import get_session
+from db import get_session, live_counts
 from names import clean_name, refuse_duplicate
 from models import Block, Entry
 
@@ -14,13 +14,8 @@ class BlockIn(SQLModel):
 
 
 def _live_counts(session: Session) -> dict:
-    """{block text: number of non-archived notes naming it} - archived notes
-    excluded for the same reason as the tag counts (routers/tags.py)."""
-    return dict(session.exec(
-        select(Entry.block, func.count())
-        .where(Entry.archived == False, Entry.block != "")  # noqa: E712
-        .group_by(Entry.block)
-    ).all())
+    """{block text: number of live notes naming it}."""
+    return live_counts(session, Entry.block, where=(Entry.block != "",))
 
 
 def _clean(payload: BlockIn) -> BlockIn:

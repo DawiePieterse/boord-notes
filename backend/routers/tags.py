@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, SQLModel, func, select
+from sqlmodel import Session, SQLModel, select
 
-from db import get_session
+from db import get_session, live_counts
 from names import clean_name, refuse_duplicate
 from models import Entry, EntryTagLink, Tag
 
@@ -9,19 +9,8 @@ router = APIRouter(prefix="/api/tags", tags=["tags"])
 
 
 def _live_counts(session: Session) -> dict:
-    """{tag id: how many entries you'd actually see filtering by it}.
-
-    Archived entries are excluded deliberately: the count is shown next to
-    each tag in the Entries filter, and counting notes that were archived
-    made a tag advertise results it would never return. It also kept
-    archived-only tags from being removable in Settings, so a tag left
-    behind by an archived note could never be tidied away."""
-    return dict(session.exec(
-        select(EntryTagLink.tag_id, func.count())
-        .join(Entry, Entry.id == EntryTagLink.entry_id)
-        .where(Entry.archived == False)  # noqa: E712
-        .group_by(EntryTagLink.tag_id)
-    ).all())
+    """{tag id: how many entries you'd actually see filtering by it}."""
+    return live_counts(session, EntryTagLink.tag_id, (Entry, Entry.id == EntryTagLink.entry_id))
 
 
 @router.get("")
