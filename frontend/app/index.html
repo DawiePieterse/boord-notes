@@ -33,7 +33,13 @@
 <header class="nav">
   <div class="flex items-center justify-between h-6">
     <div class="nav-app">Boord Notes</div>
-    <button type="button" id="unsyncedBadgeWrap" class="hidden" title="Tap to sync now"><span class="badge-unsynced" id="unsyncedBadge"></span></button>
+    <div class="flex items-center gap-3">
+      <button type="button" id="unsyncedBadgeWrap" class="hidden" title="Tap to sync now"><span class="badge-unsynced" id="unsyncedBadge"></span></button>
+      <!-- Pulls what other phones have added; the page redraws itself. -->
+      <button type="button" id="refreshBtn" class="icon-round" aria-label="Refresh" title="Refresh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg>
+      </button>
+    </div>
   </div>
   <h1 id="pageTitle" class="nav-title">New Note</h1>
 </header>
@@ -181,6 +187,12 @@
     <div id="todoList" class="space-y-6"></div>
     <div id="todoEmpty" class="hidden text-center py-16 px-6 text-2">
       Nothing to do.<br><span class="text-[15px]">Actions added to a note show up here until they're marked done.</span>
+    </div>
+    <!-- Actions given a day that hasn't come: out of the way until it does. -->
+    <div id="todoLaterWrap" class="hidden">
+      <div class="group-header">Later</div>
+      <div id="todoLater" class="group"></div>
+      <p class="group-footer">Each comes back to the list above on its day. Tap the calendar on any action to give it one.</p>
     </div>
   </div>
 
@@ -385,6 +397,24 @@
       <button type="button" id="doneConfirmBtn" class="row tappable font-semibold" autofocus>Mark Done</button>
     </div>
     <div class="group"><button type="button" id="doneCancelBtn" class="row tappable">Cancel</button></div>
+  </div>
+</dialog>
+
+<!-- Giving an action a day: it waits under "Later" on the To do list until then -->
+<dialog id="dueSheet" class="overlay" aria-label="Do it later">
+  <div class="action-sheet space-y-2">
+    <div class="group">
+      <div class="row flex-col gap-0" style="min-height: 64px">
+        <span class="text-[13px] text-2">Do it later</span>
+        <span id="dueWhat" class="text-[17px] font-semibold text-center"></span>
+      </div>
+      <button type="button" class="row tappable" data-due-days="1" autofocus>Tomorrow</button>
+      <button type="button" class="row tappable" data-due-days="7">In a week</button>
+      <button type="button" class="row tappable" data-due-days="30">In a month</button>
+      <label class="row gap-3"><span class="row-label text-left">On a day</span><input type="date" id="dueDate" class="input text-right" style="width: auto"></label>
+      <button type="button" id="dueClearBtn" class="row tappable link-red">No set day</button>
+    </div>
+    <div class="group"><button type="button" id="dueCancelBtn" class="row tappable">Cancel</button></div>
   </div>
 </dialog>
 

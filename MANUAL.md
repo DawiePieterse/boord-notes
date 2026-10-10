@@ -439,6 +439,12 @@ then records that 8a was pruned, on which day.
 Marking done works with no signal: the tick is kept on the phone and reaches
 the server with the next sync, dated when it was ticked, not when it synced.
 
+**Later.** The calendar on a row gives an action a day - tomorrow, in a
+week, in a month, or a date - and parks it under **Later** at the bottom of
+the list until that day comes; it is left out of the tab's count until then.
+**No set day** brings it straight back. Setting a day needs a connection,
+except on a note that hasn't synced yet, where it travels with the note.
+
 ### Dashboard
 
 A quick at-a-glance view: total entries, entries this week, how many have
@@ -447,14 +453,20 @@ the most recent entries.
 
 ### Entries
 
-Search by title, notes text, or block/location, and/or filter by a tag, a
-block, a type (every block of that variety), or an action. With an action
+Search by title, notes text, or block/location (a word start, in any case,
+with or without the accents - "spuit" finds "Spuitprogram" and "more" finds
+"môre"), and/or filter by a tag, a block, a type (every block of that
+variety), or an action. With an action
 chosen, each note also shows how that action stands - "✓ Fertilise: LAN ·
 21 Aug", or "○ to do" - so the action and block filters together give a
 block's history: choose **8a** and **Fertilise** to see every fertilising of
 8a, when it was done and with what. The block and type filters
-appear once blocks are set up in Settings. Tap any entry to open its full detail - photos, tags, block, and full
-notes text.
+appear once blocks are set up in Settings. The list loads fifty notes at a
+time and fetches more as it is scrolled. Tap any entry to open its full
+detail - photos, tags, block, and full notes text.
+
+The round arrow at the top right of every screen is **Refresh**: it pulls
+in what the other phone has added since the screen was opened.
 
 ### AI Tidy up and Ask AI (optional)
 
@@ -764,8 +776,9 @@ entry, shared across all entries.
 
 ### Action
 On a note: `kind` (Prune, Fertilise...), `detail` (with what, free text),
-`status` (to do or done), `done_at` (the phone's time when it was ticked off)
-and `done_note` (what was actually used, if it differed). Its id is made on
+`status` (to do or done), `done_at` (the phone's time when it was ticked off),
+`done_note` (what was actually used, if it differed) and `due_on` (a day,
+when the action was put off until then). Its id is made on
 the phone, like a note's, so an action added or ticked off offline syncs
 without duplicating. The action types themselves are a list of names, like
 tags.
