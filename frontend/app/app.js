@@ -66,7 +66,7 @@ function showApp() {
 // ---------------------------------------------------------------------
 // Tabs
 // ---------------------------------------------------------------------
-const PAGE_TITLES = { todo: "To do", dashboard: "Dashboard", entries: "Entries", ask: "Ask AI", settings: "Settings" };
+const PAGE_TITLES = { todo: "To do", dashboard: "Dashboard", entries: "Notes", ask: "Ask AI", settings: "Settings" };
 
 // The header's Refresh: the lists, then whatever page is showing.
 async function refreshAll() {
@@ -590,7 +590,7 @@ async function saveEntry() {
   }
 
   NB.beepSaved();
-  NB.toast(editingEntryId ? "Entry updated" : "Note saved");
+  NB.toast(editingEntryId ? "Note updated" : "Note saved");
   resetCaptureForm();
   updateUnsyncedBadge();
   showPage("entries");
@@ -936,7 +936,7 @@ const NOTE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 // One note as a list row. Opening it is handled for every list at once, by a
 // single listener on the document for .entry-card (see init()).
 // With the action filter on, a card also says how that action stands on the
-// note - "✓ Fertilise: LAN · 9 Oct" - so the list reads as the history.
+// note - "✓ Fertilise: LAN · 2026/10/09" - so the list reads as the history.
 function actionStateHtml(e, kind, queued) {
   return (e.actions || []).filter((a) => a.kind === kind).map((a) => {
     const done = doneMark(a, queued);
@@ -1279,7 +1279,7 @@ async function showEntryDetail(id) {
     // captured on this device we can still show it. Opening an entry you can
     // see listed must never dead-end on "check connection".
     const local = await IDB.getEntry(id);
-    if (!local) { NB.toast("Could not load entry - check connection"); return; }
+    if (!local) { NB.toast("Could not load note - check connection"); return; }
     entry = localEntryAsServerShape(local);
     const photos = await IDB.getPhotosForEntry(id);
     entry.localPhotoUrls = photos.map((p) => URL.createObjectURL(p.blob));
@@ -1361,7 +1361,7 @@ function closeDetailModal() {
 
 async function archiveCurrentEntry() {
   if (!currentDetailEntry) return;
-  if (!confirm(`Archive "${currentDetailEntry.title || "this entry"}"? It can be restored from Settings.`)) return;
+  if (!confirm(`Archive "${currentDetailEntry.title || "this note"}"? It can be restored from Settings.`)) return;
   const entryId = currentDetailEntry.id;
   try {
     await NB.api(`/api/entries/${entryId}`, { method: "DELETE" });
@@ -1372,7 +1372,7 @@ async function archiveCurrentEntry() {
   // Drop this device's copy too, so the entry doesn't come back the next time
   // the app runs offline and reads the local store.
   await IDB.deleteEntry(entryId);
-  NB.toast("Entry archived");
+  NB.toast("Note archived");
   closeDetailModal();
   updateUnsyncedBadge();
   loadEntries();
@@ -1546,10 +1546,11 @@ async function loadBackups() {
   // Not NB.fmtDateTime: a backup's created_at is the zip file's mtime in the
   // farm PC's LOCAL time (backend/backup.py), not a UTC database timestamp,
   // so pinning it to UTC would push it two hours late. The PC and the phones
-  // share the farm's timezone, so reading it as local is right.
+  // share the farm's timezone, so reading it as local is right; fmtLocalDateTime
+  // only gives it the same en-ZA 24-hour shape as every other time on screen.
   document.getElementById("backupsList").innerHTML = backups.map((b) => `
     <div class="row">
-      <span class="row-label">${new Date(b.created_at).toLocaleString()}
+      <span class="row-label">${NB.fmtLocalDateTime(new Date(b.created_at))}
         <span class="block row-sub">${formatBytes(b.size_bytes)}</span></span>
       <button type="button" data-download="${esc(b.filename)}" class="link text-[15px]">Download</button>
     </div>`).join("") || `<div class="empty">No backups yet</div>`;

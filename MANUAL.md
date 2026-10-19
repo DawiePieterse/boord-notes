@@ -4,17 +4,24 @@ A private, two-person app for Andre to capture farm knowledge - procedures,
 equipment quirks, seasonal timing, anything worth handing over - so his son
 has it all in one place later.
 
-It is the third of the Boord apps and runs beside the other two on the farm
+It is one of the Boord apps and runs beside the others on the farm
 server: its own process, its own port, its own database, its own auto-start
-task. Nothing here reads or writes Boord's data - the only things the three
+task. Nothing here reads or writes Boord's data - the only things they
 share are the machine they run on, the tailnet that reaches them, and the
 release key that signs their updates.
 
 | App | Local port | Tailscale address |
 | --- | --- | --- |
-| Boord | 8000 | `https://<server>.<tailnet>.ts.net/` |
+| Boord | 8000 | `https://<server>.<tailnet>.ts.net/` (serve port 443) |
 | Boord Owner | 8010 | `https://<server>.<tailnet>.ts.net:8443/` |
 | **Boord Notes** | **8020** | **`https://<server>.<tailnet>.ts.net:9443/app/`** |
+| Kudde | 8030 | `https://<server>.<tailnet>.ts.net:8030/` |
+| Boord Labour | 8040 | `https://<server>.<tailnet>.ts.net:8040/` |
+| Boord Monitor | 8050 | `https://<server>.<tailnet>.ts.net:8050/` |
+
+Boord Monitor watches this app too: it reads `/api/version`, which answers
+with the release tag the server is running and the app version shown in
+Settings.
 
 ## Table of Contents
 
@@ -60,16 +67,16 @@ Afrikaans and South African English). The app only ever sees and stores the
 resulting **text** - there is no audio file anywhere, no transcription
 service, and no recording of any kind.
 
-### What an entry is
+### What a note is
 
 Title + notes (the dictated text) + an optional Block/Location + any number
 of photos, taken with the phone's own camera + free-form tags Andre defines
-as he goes. Every entry remembers who wrote it and when.
+as he goes. Every note remembers who wrote it and when.
 
 ### Why capture is offline-first
 
-Andre will often be out on the farm with patchy or no signal. Saving an
-entry always writes to the phone first, instantly, whether or not there's a
+Andre will often be out on the farm with patchy or no signal. Saving a
+note always writes to the phone first, instantly, whether or not there's a
 connection - it syncs to the server automatically in the background once
 signal returns. Nothing is ever lost waiting for a connection. See
 [chapter 5](#5-how-offline-capture-works) for exactly how this works and
@@ -321,7 +328,7 @@ steps are identical, this app just needs its own `serve` line.
 
 ### Install to Home Screen *before* first use - this matters
 
-**⚠️ Do this before Andre records anything.** If he captures entries in a
+**⚠️ Do this before Andre records anything.** If he captures notes in a
 plain Safari tab and *then* adds the app to his Home Screen, iOS treats the
 installed app as a completely separate storage area from the Safari tab it
 came from - anything captured before installing can appear to have
@@ -393,11 +400,16 @@ HEIC out of the album attaches just like a camera shot does.
 ## 4. Using the App
 
 The app is laid out like an iPhone app: the tabs - **Capture**, **To do**,
-**Dashboard**, **Entries**, **Ask AI** (only when AI help is on) and **Settings** - sit along the
+**Dashboard**, **Notes**, **Ask AI** (only when AI help is on) and **Settings** - sit along the
 bottom of the screen, and each screen's name is shown large at the top. It
 follows the phone's own light or dark setting. A note opened from a list
 slides up from the bottom; tap **Done**, or the dimmed area above it, to close
 it.
+
+Dates are written year/month/day (2026/08/21) and times on the 24-hour clock
+without seconds (14:05), the same on every phone whatever its own language
+or region setting - the South African way, so a date like 3/4 can never be
+read as the wrong month.
 
 ### Capture
 
@@ -407,7 +419,7 @@ it.
   type. For a spot that isn't a block, pick **Somewhere else…** and
   type it, e.g. "near the pump station". Before any blocks are set up the
   field is a plain text box.
-- **Notes** - the dictated (or typed) body of the entry.
+- **Notes** - the dictated (or typed) body of the note.
 - **Actions** - what the note leads to: tap **+ Prune**, **+ Fertilise**,
   **+ Water** and so on (or type another and tap **Add**), then say *with
   what* if it matters, e.g. "LAN 200 g/tree". A note can have several. Each
@@ -420,7 +432,7 @@ it.
   preloaded so Andre isn't starting from nothing.
 - **Photos** - tap **Add Photo** to attach one or more.
 
-Tap **Save Note** - the entry is saved to the phone instantly and
+Tap **Save Note** - the note is saved to the phone instantly and
 starts syncing to the server in the background (see
 [chapter 5](#5-how-offline-capture-works)).
 
@@ -447,22 +459,22 @@ except on a note that hasn't synced yet, where it travels with the note.
 
 ### Dashboard
 
-A quick at-a-glance view: total entries, entries this week, how many have
-photos, how many tags are in use, a breakdown of entry counts per tag, and
-the most recent entries.
+A quick at-a-glance view: total notes, notes this week, how many have
+photos, how many tags are in use, a breakdown of note counts per tag, and
+the most recent notes.
 
-### Entries
+### Notes
 
 Search by title, notes text, or block/location (a word start, in any case,
 with or without the accents - "spuit" finds "Spuitprogram" and "more" finds
 "môre"), and/or filter by a tag, a block, a type (every block of that
 variety), or an action. With an action
 chosen, each note also shows how that action stands - "✓ Fertilise: LAN ·
-21 Aug", or "○ to do" - so the action and block filters together give a
+2026/08/21", or "○ to do" - so the action and block filters together give a
 block's history: choose **8a** and **Fertilise** to see every fertilising of
 8a, when it was done and with what. The block and type filters
 appear once blocks are set up in Settings. The list loads fifty notes at a
-time and fetches more as it is scrolled. Tap any entry to open its full
+time and fetches more as it is scrolled. Tap any note to open its full
 detail - photos, tags, block, and full notes text.
 
 The round arrow at the top right of every screen is **Refresh**: it pulls
@@ -537,7 +549,7 @@ in other capitals ("prune") files under the existing spelling.
 
 The **Blocks** card in Settings is the farm's own block list, kept in this
 app (it is not read from Boord). Each block has a name and a type - the
-variety, e.g. "TMR" - and the type is what the Entries **type** filter and
+variety, e.g. "TMR" - and the type is what the Notes **type** filter and
 the grouping on the Capture picker use.
 
 - **Add** - type the name and type at the foot of the card and tap
@@ -556,7 +568,7 @@ other phones the next time they're connected.
 
 ### Editing and archiving
 
-From an entry's detail view: **Edit** reopens it in the Capture form with
+From a note's detail view: **Edit** reopens it in the Capture form with
 everything filled in; **Archive** soft-deletes it (it stops appearing in
 lists, but nothing is erased from the database). Settings lists the
 archived notes, each with a **Restore** button that puts it back as it was.
@@ -570,14 +582,14 @@ server could not be reached or refused something.
 
 ## 5. How Offline Capture Works
 
-Every **Save Note** writes the entry (and any attached photos)
+Every **Save Note** writes the note (and any attached photos)
 straight into the phone's own local storage first - this always succeeds
 instantly, with or without a signal. A background sync process then:
 
 1. Checks the phone actually has a connection.
-2. Sends any not-yet-synced entries to the server.
-3. Only once an entry is confirmed saved on the server, sends its photos
-   (this order matters - the server needs to know about the entry before it
+2. Sends any not-yet-synced notes to the server.
+3. Only once a note is confirmed saved on the server, sends its photos
+   (this order matters - the server needs to know about the note before it
    can accept a photo for it).
 4. Retries automatically every ~10 seconds, and immediately whenever the
    phone regains a connection - nothing needs to be triggered manually.
@@ -609,7 +621,7 @@ that exact tree next season.
 If anything is still waiting to sync, a small badge appears near the top of
 the screen (e.g. "2 not yet synced"). This is the only signal that
 something hasn't reached the server yet - it's normal to see it briefly
-after saving an entry with no signal, and it should clear on its own once
+after saving a note with no signal, and it should clear on its own once
 back in range. If it persists for a long time despite having a good
 connection, check [Troubleshooting](#7-troubleshooting--faq).
 
@@ -621,7 +633,7 @@ still waiting to sync. This is exactly why the sync happens automatically
 and quickly (every ~10 seconds whenever online) rather than waiting for
 Andre to manually "upload" - the safest habit is simply opening the app
 again with a signal reasonably soon after a batch of offline captures,
-rather than leaving unsynced entries sitting for days.
+rather than leaving unsynced notes sitting for days.
 
 ---
 
@@ -734,7 +746,7 @@ nothing. Fixing it on the phone takes both halves:
    alone does not.
 3. Re-add the icon from the new address, `.../:9443/app/`.
 
-**An entry looks like it disappeared after installing the Home Screen
+**A note looks like it disappeared after installing the Home Screen
 icon.** This is the iOS storage-silo issue described in
 [chapter 3](#install-to-home-screen-before-first-use---this-matters) - it
 was captured in a Safari tab before installing, and is sitting in Safari's

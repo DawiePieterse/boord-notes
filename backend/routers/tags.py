@@ -57,7 +57,7 @@ def delete_tag(name: str, session: Session = Depends(get_session)):
     if not tag:
         raise HTTPException(404, "Tag not found")
     if _live_counts(session).get(tag.id, 0) > 0:
-        raise HTTPException(400, "Tag is still used by entries")
+        raise HTTPException(400, "Tag is still used by notes")
     for link in session.exec(select(EntryTagLink).where(EntryTagLink.tag_id == tag.id)).all():
         session.delete(link)
     session.delete(tag)

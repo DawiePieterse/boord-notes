@@ -53,7 +53,7 @@ _ID_RE = re.compile(r"\A[A-Za-z0-9_-]{1,64}\Z")
 
 def _validate_entry_id(entry_id: str) -> None:
     if not _ID_RE.match(entry_id or ""):
-        raise HTTPException(400, "Invalid entry id")
+        raise HTTPException(400, "Invalid note id")
 
 
 def _get_or_create_tags(session: Session, names: List[str]) -> List[Tag]:
@@ -268,7 +268,7 @@ def entry_stats(session: Session = Depends(get_session)):
 def get_entry(entry_id: str, session: Session = Depends(get_session)):
     entry = session.get(Entry, entry_id)
     if not entry:
-        raise HTTPException(404, "Entry not found")
+        raise HTTPException(404, "Note not found")
     return _entry_out(session, entry)
 
 
@@ -323,7 +323,7 @@ def restore_entry(entry_id: str, session: Session = Depends(get_session)):
     """Back from the archive (Settings lists what is there)."""
     entry = session.get(Entry, entry_id)
     if not entry:
-        raise HTTPException(404, "Entry not found")
+        raise HTTPException(404, "Note not found")
     entry.archived = False
     session.add(entry)
     session.commit()
@@ -336,7 +336,7 @@ def upload_photo(entry_id: str, file: UploadFile, caption: str = "",
     _validate_entry_id(entry_id)
     entry = session.get(Entry, entry_id)
     if not entry:
-        raise HTTPException(404, "Entry not found")
+        raise HTTPException(404, "Note not found")
     ext = os.path.splitext(file.filename or "")[1].lower() or ".jpg"
     if ext not in (".jpg", ".jpeg", ".png", ".webp"):
         raise HTTPException(400, "Unsupported image type")

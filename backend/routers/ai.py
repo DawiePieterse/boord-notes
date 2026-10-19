@@ -89,7 +89,12 @@ ASK_SCHEMA = {
 }
 
 
-def _unavailable(e: ai.AiUnavailable):
+def _unavailable(e: ai.AiUnavailable) -> HTTPException:
+    """Builds, rather than raises, the 503 for an AI outage, so each caller
+    writes `raise _unavailable(e)` inside its own except block. Raising there
+    keeps the AiUnavailable chained as the cause in the server log, and keeps
+    the raise visible at the call site so nobody reads the handler as falling
+    through to code that needs Claude's answer."""
     return HTTPException(503, str(e))
 
 

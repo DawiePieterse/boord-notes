@@ -6,11 +6,11 @@
 const API_BASE = "";
 
 const NB = {
-  // Bump on every deploy that touches frontend code. Shown in the header so
-  // it's obvious at a glance whether a device's cached copy is actually up
+  // Bump on every deploy that touches frontend code. Shown in the Settings
+  // footer so it's obvious at a glance whether a device's cached copy is actually up
   // to date - the service worker revalidates in the background, so a device
   // picks up new code on its second load (see frontend/app/service-worker.js).
-  VERSION: "2.15",
+  VERSION: "2.16",
 
   // Left behind by the versions that had accounts. Cleared once on load so a
   // phone that used to sign in is not carrying a stale token and role around
@@ -78,7 +78,15 @@ const NB = {
       err.status = res.status;   // so callers can tell a server fault from an unreachable server
       // FastAPI's {"detail": "..."} - the server's own sentence for what went
       // wrong ("Tag already exists: Pruning"), worth showing as it is.
-      try { const d = JSON.parse(text).detail; if (typeof d === "string") err.detail = d; } catch (_) {}
+      // A 422 from FastAPI's own validation is a list instead, one object per
+      // bad field ({loc, msg, type}). Showing the first one's msg beats the
+      // generic fallback: "Field required" at least says the save was
+      // refused for something in the note, not for the signal.
+      try {
+        const d = JSON.parse(text).detail;
+        if (typeof d === "string") err.detail = d;
+        else if (Array.isArray(d) && d.length && d[0] && typeof d[0].msg === "string") err.detail = d[0].msg;
+      } catch (_) {}
       throw err;
     }
     const contentType = res.headers.get("content-type") || "";
@@ -117,14 +125,29 @@ const NB = {
     return isNaN(d.getTime()) ? null : d;
   },
 
+  // Pinned to en-ZA rather than the device's own locale. A phone left on US
+  // English would print "9/20/2026, 8:00:00 AM" where another prints
+  // "2026/09/20, 08:00:00", and a date like 3/4 means a different month to
+  // each of them. en-ZA is the farm's own convention, and a 24-hour clock
+  // without seconds is how farm times are written - seconds are noise on a
+  // note.
+  LOCALE: "en-ZA",
+  TIME_OPTS: { hour: "2-digit", minute: "2-digit", hour12: false },
+
+  // For a Date already in hand (a backup's local-time mtime, say). Server
+  // timestamps go through fmtDateTime instead, which pins them to UTC first.
+  fmtLocalDateTime(d, fallback = "") {
+    if (!(d instanceof Date) || isNaN(d.getTime())) return fallback;
+    return `${d.toLocaleDateString(NB.LOCALE)}, ${d.toLocaleTimeString(NB.LOCALE, NB.TIME_OPTS)}`;
+  },
+
   fmtDateTime(value, fallback = "") {
-    const d = NB.parseServerDate(value);
-    return d ? d.toLocaleString() : fallback;
+    return NB.fmtLocalDateTime(NB.parseServerDate(value), fallback);
   },
 
   fmtDate(value, fallback = "") {
     const d = NB.parseServerDate(value);
-    return d ? d.toLocaleDateString() : fallback;
+    return d ? d.toLocaleDateString(NB.LOCALE) : fallback;
   },
 
   // Milliseconds since the epoch, for sorting and comparing server and local
@@ -175,16 +198,26 @@ const NB = {
       el = document.createElement("div");
       el.id = "nb-toast";
       el.className = "toast";
+      // A live region, so VoiceOver reads "Note saved" out instead of the
+      // confirmation being visible only. polite: it waits for the current
+      // utterance rather than cutting it off.
+      el.setAttribute("role", "status");
+      el.setAttribute("aria-live", "polite");
       document.body.appendChild(el);
     }
     el.textContent = message;
     el.classList.add("show");
     clearTimeout(el._timer);
-    el._timer = setTimeout(() => el.classList.remove("show"), 2200);
+    // Long enough to read: a short "Note saved" goes in 2.2 s, but a server
+    // reason like "Can't reach the server - try again when you have signal."
+    // needs more than that when read on a phone held one-handed in the sun.
+    // 40 ms a character, capped so a long message can't sit over the tab bar.
+    const ms = Math.min(6000, 2200 + 40 * String(message || "").length);
+    el._timer = setTimeout(() => el.classList.remove("show"), ms);
   },
 
   // Short synthesized confirmation chime (no audio file needed, works fully
-  // offline) - plays when an entry is saved locally, before sync even happens.
+  // offline) - plays when a note is saved locally, before sync even happens.
   _tone(frequency, duration, delay = 0) {
     try {
       const ctx = NB._audioCtx || (NB._audioCtx = new (window.AudioContext || window.webkitAudioContext)());
