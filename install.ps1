@@ -239,8 +239,15 @@ cd /d "$BackendDir"
     foreach ($name in @($LegacyTaskName, $TaskName)) {
         cmd /c "schtasks /query /tn ""$name"" >nul 2>&1"
         if ($LASTEXITCODE -eq 0) {
-            cmd /c "schtasks /end /tn ""$name"" >nul 2>&1"
-            Start-Sleep -Seconds 1
+            # stop_server.ps1, not a bare "schtasks /end": the uvicorn process
+            # outlives the launcher, and a re-install would then start the new
+            # launcher next to an old server still holding the port. Both
+            # task names serve on the same port, so the same check covers
+            # the legacy one.
+            & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot "stop_server.ps1") -Port $Port -TaskName $name
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warn "The old server could not be stopped (see above). Restart the PC after this installer finishes."
+            }
             schtasks /delete /tn "$name" /f | Out-Null
             if ($name -eq $LegacyTaskName) { Write-Ok "Removed the old '$LegacyTaskName' task" }
         }
