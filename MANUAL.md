@@ -184,6 +184,20 @@ Double-click **`update_server.bat`**. It installs the newest **signed**
 release, brings the database up to date, and restarts the server - one step,
 the same pattern and the same signing key as Boord and Boord Owner.
 
+**Updated before 2.18? Check the server really restarted.** Older updaters
+ended the Scheduled Task and started it again, but ending the task does not
+stop the server it started: the old server kept port 8020, the new one could
+not start, and the updater still said it was back up. Since 2.18 it stops the
+server with `stop_server.ps1`, which waits until port 8020 is free and refuses
+to touch the database if it never is. Settings shows which version is
+actually running. If it is older than what you installed, run this in the
+Notes folder from a Command Prompt opened as administrator, then start the
+"Boord Notes Server" task again:
+
+```bat
+powershell -NoProfile -ExecutionPolicy Bypass -File stop_server.ps1
+```
+
 It does not `git pull` a branch. A branch pull trusts whoever can push to
 the repo, and this server runs as SYSTEM, so a stolen GitHub token would be
 code execution on the farm PC. Instead it checks out the newest `v*` tag
