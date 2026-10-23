@@ -104,6 +104,64 @@ It never drops or alters anything, so downgrading is just running the old code. 
 - **`install.ps1` adds the repo folder to Git's machine-wide `safe.directory`.** The server runs as SYSTEM, and the folder belongs to the admin account that cloned it, so Git refused it as "dubious ownership" and `/api/version` reported `"tag": null`. The block is copied from Boord Monitor's `install.ps1`. On the farm PC the folder is `C:\bekfontein-farm-notebook`, not a name like `boord-notes`.
 - **User-facing changes also go into `MANUAL.md`.** If screens change, update the training guide too: `docs/guide/training-guide.html`, with screenshots in `docs/guide/img/`, rebuilt to `Boord_Notes_Training_Guide.pdf`.
 
+## Installing and deploying
+
+### Where it lives
+
+| | |
+|---|---|
+| Your Mac (the only clone to release from) | `~/Documents/Projects/BoordNotes` |
+| Farm PC folder | `C:\bekfontein-farm-notebook` |
+| Farm PC scheduled task | "Boord Notes Server", runs as SYSTEM at boot |
+| Port on the farm PC | `127.0.0.1:8020` |
+| Address on the tailnet | `https://bekfontein-server.taile32cb0.ts.net:9443/` |
+
+### First install on the farm PC (once)
+
+Only for a new PC or a reinstall. An app that is already running is updated, not reinstalled.
+
+1. Open a Command Prompt and clone the repo into the folder above:
+   ```bat
+   git clone https://github.com/DawiePieterse/boord-notes.git C:\bekfontein-farm-notebook
+   ```
+2. In `C:\bekfontein-farm-notebook`, double-click **`install.bat`** and accept the administrator prompt.
+   It installs Python if needed, builds the app's environment, writes the launcher, registers the scheduled task and starts the server. Re-running it is safe and keeps the data.
+3. Tell the updater which release key to trust. In the same folder, type it exactly like this, with the redirect first:
+   ```bat
+   >data\release_key.fpr echo 67C64CFDD584DD140E58AF6E329C9B9DD0562A9D
+   ```
+4. Publish it on the tailnet, in a Command Prompt opened as administrator:
+   ```bat
+   tailscale serve --bg --https=9443 http://localhost:8020
+   ```
+5. If the installer did not already add it, let SYSTEM's Git read the folder, as administrator (forward slashes):
+   ```bat
+   git config --system --add safe.directory C:/bekfontein-farm-notebook
+   ```
+6. Check it from your Mac: `curl -s https://bekfontein-server.taile32cb0.ts.net:9443/api/version` should show the release tag.
+
+### Deploying a change (every release)
+
+Merging to `main` changes nothing on the farm. A release is a signed tag, and the farm PC installs it when its updater runs.
+
+1. **Merge the PR on GitHub.** A frontend change must already bump `VERSION` in `frontend/shared/api.js` and the service worker's `CACHE`.
+2. **On your Mac, bring the clone up to date.** This step is what stops a tag landing on an old commit:
+   ```sh
+   cd ~/Documents/Projects/BoordNotes && git checkout main && git pull --ff-only origin main
+   git log -1 --format='%h %s'                  # the merge you expect
+   grep -m1 'VERSION:' frontend/shared/api.js   # the version you are releasing
+   ```
+3. **Sign and push the tag** (`vX.Y` must equal `VERSION`):
+   ```sh
+   git tag -s vX.Y -m "Boord Notes X.Y" && git verify-tag vX.Y && git push origin vX.Y
+   ```
+   This repo has no `release.sh`, so nothing else checks `VERSION` against the tag. Check it in step 2.
+   Never move or reuse a released tag. Fix a wrong one with the next version.
+4. **On the farm PC**, in `C:\bekfontein-farm-notebook`, double-click **`update_server.bat`**. It verifies the signature, stops the server with `stop_server.ps1`, installs dependencies, copies and migrates the database, and starts it again. If it stops with an error, nothing has changed. Read the message; never check the tag out by hand.
+5. **If the release changed `install.ps1`** (its notes say "run install.bat once more"), double-click `install.bat` as well. The updater does not rewrite the launcher or the task.
+6. **Check from your Mac:** `curl -s https://bekfontein-server.taile32cb0.ts.net:9443/api/version` should show `"tag":"vX.Y","state":"release"`.
+7. **Close and reopen the app on Andre's and Devin's phones (fully, not just backgrounded) so they load the new version. Settings shows the version.**
+
 ## Conventions
 
 Comments are long on purpose. They explain *why* the code is the way it is, usually a farm-specific constraint: weak signal, one-handed use in an orchard, the tailnet-only phones. Keep that style, and don't strip those comments as noise.
