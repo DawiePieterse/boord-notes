@@ -5,12 +5,14 @@ job. The nightly run is skipped if nothing has changed since the last
 backup. Backup files never include the app's source code (already in git),
 only the data that changes at runtime."""
 import os
+import re
 import sqlite3
 import tempfile
 import threading
 import time
 import zipfile
 from datetime import datetime, timedelta
+from typing import List, Optional
 
 from db import DATA_DIR, DB_PATH, PHOTOS_DIR
 
@@ -18,11 +20,16 @@ BACKUPS_DIR = os.path.join(DATA_DIR, "backups")
 os.makedirs(BACKUPS_DIR, exist_ok=True)
 MAX_BACKUPS = 14
 
+# Only the files this module writes, by their exact shape. A copy someone
+# renamed by hand ("backup_old.zip") used to be listed, counted against
+# MAX_BACKUPS and - worst of all - handed to _last_backup_time, where its
+# name failed to parse as a timestamp and the nightly thread swallowed the
+# error, so no backup was taken again until the file was moved away.
+_BACKUP_NAME_RE = re.compile(r"\Abackup_\d{8}_\d{6}\.zip\Z")
 
-def _backup_filenames() -> list[str]:
-    return sorted(
-        f for f in os.listdir(BACKUPS_DIR) if f.startswith("backup_") and f.endswith(".zip")
-    )
+
+def _backup_filenames() -> List[str]:
+    return sorted(f for f in os.listdir(BACKUPS_DIR) if _BACKUP_NAME_RE.match(f))
 
 
 def _prune_old_backups() -> None:
@@ -42,8 +49,19 @@ def create_backup() -> str:
             # API takes a consistent snapshot into a temp file first.
             with tempfile.TemporaryDirectory() as tmp:
                 snapshot = os.path.join(tmp, "notebook.db")
-                with sqlite3.connect(DB_PATH) as src, sqlite3.connect(snapshot) as dst:
+                # Closed explicitly, not just committed: sqlite3's context
+                # manager leaves the connection open, and Windows will not
+                # delete a file a process still has open. The farm PC is
+                # Windows, so leaving these for the garbage collector made
+                # the temp folder's cleanup fail right after the database
+                # had been zipped - Backup Now reported an error, and the
+                # nightly zip was left holding the database but no photos.
+                src, dst = sqlite3.connect(DB_PATH), sqlite3.connect(snapshot)
+                try:
                     src.backup(dst)
+                finally:
+                    dst.close()
+                    src.close()
                 zf.write(snapshot, arcname="notebook.db")
         for root, _, files in os.walk(PHOTOS_DIR):
             for f in files:
@@ -56,7 +74,7 @@ def create_backup() -> str:
     return filename
 
 
-def list_backups() -> list[dict]:
+def list_backups() -> List[dict]:
     result = []
     for name in reversed(_backup_filenames()):
         full = os.path.join(BACKUPS_DIR, name)
@@ -77,7 +95,7 @@ def _seconds_until_next_2am() -> float:
     return (target - now).total_seconds()
 
 
-def _last_backup_time() -> datetime | None:
+def _last_backup_time() -> Optional[datetime]:
     names = _backup_filenames()
     if not names:
         return None

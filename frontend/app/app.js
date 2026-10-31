@@ -535,7 +535,27 @@ function resetCaptureForm() {
   renderPhotoThumbs();
 }
 
+// Save Note is held while a save runs. The weather lookup below can keep a
+// save open for up to 1.5 s, and a second tap in that window built a second
+// note with its own id - the same note saved twice, out in the orchard where
+// a tap that seems not to have landed is tapped again.
 async function saveEntry() {
+  const btn = document.getElementById("saveEntryBtn");
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    await saveEntryNow();
+  } catch (e) {
+    // The phone's own storage refused (full, or blocked in a private tab):
+    // the form keeps what was typed, so it can be tried again or copied out.
+    console.error("Save failed:", e);
+    NB.toast("Could not save on this phone - the note is still in the form. Try again.");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function saveEntryNow() {
   const title = document.getElementById("entryTitle").value.trim();
   const body = document.getElementById("entryBody").value.trim();
   if (!title && !body) { NB.toast("Add a title or some notes first"); return; }
@@ -641,11 +661,15 @@ async function syncLoop({ manual = false } = {}) {
     // One read of the store: an entry is on the server once it was synced
     // before this pass or is pushed during it.
     const syncedIds = new Set();
+    const localIds = new Set();
     for (const entry of await IDB.getAllEntries()) {
+      localIds.add(entry.id);
       if (entry.synced) { syncedIds.add(entry.id); continue; }
       try {
         await NB.api("/api/entries", { method: "POST", body: entry });
-        await IDB.markEntrySynced(entry.id);
+        // Only this copy: a save made while the POST was in flight carries a
+        // new rev and must go out on the next pass (see IDB.markEntrySynced).
+        await IDB.markEntrySynced(entry.id, entry.rev);
         syncedIds.add(entry.id);
         pushedSomething = true;
       } catch (e) {
@@ -654,7 +678,13 @@ async function syncLoop({ manual = false } = {}) {
     }
 
     for (const photo of await IDB.getUnsyncedPhotos()) {
-      if (!syncedIds.has(photo.entry_id)) continue; // parent entry not synced yet
+      // Its note is still waiting on this phone: the server can't take the
+      // photo yet. A photo whose note is no longer in the store at all is
+      // tried anyway - the note was synced and then dropped from the store
+      // (the Notes list prunes what the server has), so the server has it.
+      // Skipping those left such photos queued for ever, with the "not yet
+      // synced" badge stuck on a count that no amount of signal cleared.
+      if (localIds.has(photo.entry_id) && !syncedIds.has(photo.entry_id)) continue;
       try {
         const form = new FormData();
         form.append("file", photo.blob, photo.filename);
@@ -662,6 +692,10 @@ async function syncLoop({ manual = false } = {}) {
         await IDB.deletePhoto(photo.local_id);
         pushedSomething = true;
       } catch (e) {
+        // A note the server has never had, and this phone no longer holds,
+        // is one nothing can ever reconcile: the photo is dropped rather
+        // than retried every ten seconds for the life of the install.
+        if (e.status === 404 && !localIds.has(photo.entry_id)) { await IDB.deletePhoto(photo.local_id); continue; }
         failed = true; lastSyncError = e;   /* leave unsynced, retry next tick */
       }
     }
@@ -1207,7 +1241,9 @@ function saveDoneQueue(queue) {
 let doneTarget = null;   // {actionId, entryId} the open "Mark as done" sheet is for
 
 function openDoneSheet(actionId, entryId) {
-  const action = todoItems.find((a) => a.id === actionId)
+  // Later rows have the same tick as the list above: a job given a day and
+  // then done early used to tap into nothing.
+  const action = [...todoItems, ...laterItems].find((a) => a.id === actionId)
     || (currentDetailEntry?.actions || []).find((a) => a.id === actionId);
   if (!action) return;
   doneTarget = { actionId, entryId };
@@ -1363,6 +1399,24 @@ async function archiveCurrentEntry() {
   if (!currentDetailEntry) return;
   if (!confirm(`Archive "${currentDetailEntry.title || "this note"}"? It can be restored from Settings.`)) return;
   const entryId = currentDetailEntry.id;
+  // A note that has not reached the server yet is pushed first, so that it
+  // lands in the server's archive where Restore can find it. Archiving it
+  // straight off deleted the only copy: the server's DELETE answered ok for
+  // an id it had never seen, the local record went, and its photos stayed
+  // queued behind a note that no longer existed.
+  const local = await IDB.getEntry(entryId);
+  if (local && !local.synced) {
+    while (syncing) await new Promise((r) => setTimeout(r, 200));
+    lastSyncError = null;   // so the line below reports this pass, not an older one
+    await syncLoop({ manual: true });
+    const pushed = await IDB.getEntry(entryId);
+    if (!pushed || !pushed.synced) {
+      NB.toast(lastSyncError && !NB.isNetworkError(lastSyncError)
+        ? `Can't archive yet - the server said: ${NB.errorMessage(lastSyncError, "see the server window")}`
+        : "Can't archive yet - this note hasn't reached the server. Try again when you have signal.");
+      return;
+    }
+  }
   try {
     await NB.api(`/api/entries/${entryId}`, { method: "DELETE" });
   } catch (e) {

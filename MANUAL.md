@@ -470,6 +470,7 @@ week, in a month, or a date - and parks it under **Later** at the bottom of
 the list until that day comes; it is left out of the tab's count until then.
 **No set day** brings it straight back. Setting a day needs a connection,
 except on a note that hasn't synced yet, where it travels with the note.
+A job under Later has the same tick as the list above, for one done early.
 
 ### Dashboard
 
@@ -586,6 +587,9 @@ From a note's detail view: **Edit** reopens it in the Capture form with
 everything filled in; **Archive** soft-deletes it (it stops appearing in
 lists, but nothing is erased from the database). Settings lists the
 archived notes, each with a **Restore** button that puts it back as it was.
+A note that hasn't synced yet is sent to the server first, so that it lands
+in the archive rather than vanishing; with no signal, Archive says so and
+leaves the note alone.
 
 Settings also has a **Sync** card: what is still waiting on this phone, when
 the server last answered, and **Sync Now** for the day the "not yet synced"
