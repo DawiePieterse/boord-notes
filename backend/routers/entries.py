@@ -214,6 +214,10 @@ def list_entries(q: str = "", tag: str = "", block: str = "", variety: str = "",
                   session: Session = Depends(get_session)):
     """Newest first. `limit` and `offset` page the list (0 = everything);
     `slim` returns list rows (see SLIM_KEYS) rather than whole notes."""
+    # A search of only spaces has no words to match: FTS5 answers an empty
+    # MATCH with a syntax error, which came back as a 500 for what is really
+    # "no search at all".
+    q = q.strip()
     query = select(Entry).where(Entry.archived == archived).order_by(Entry.created_at.desc())
     if action:
         # Notes with an action of that kind, to do or done - with the block

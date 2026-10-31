@@ -22,6 +22,8 @@ def test_full_text_search(client):
         assert ids("spuit blok") == ["e1"]       # every word must match
         assert ids("8b") == ["e2"]
         assert ids('"weird) OR') == []           # punctuation is quoted, not syntax
+        r = client.get("/api/entries?q=%20%20")   # only spaces: no search, not a 500
+        assert r.status_code == 200 and [e["id"] for e in r.json()] == ["e2", "e1"]
         client.post("/api/entries", json={"id": "e2", "title": "Flush op 8b", "body": "Niks", "block": "8b"})
         assert ids("water") == []                # the index follows an edit
     finally:

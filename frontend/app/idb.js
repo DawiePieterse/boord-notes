@@ -44,8 +44,20 @@ const IDB = (() => {
     req.onerror = () => reject(req.error);
   });
 
+  // A fresh token for each write of an entry record. Inside the record, not a
+  // new store or index, so DB_VERSION stays where it is (see the warning in
+  // the upgrade handler above).
+  const newRev = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+
   return {
+    // Every write of an entry stamps a new `rev`, which markEntrySynced
+    // checks: the record a sync pass POSTed is only marked synced while it is
+    // still the record in the store. Without it, a note edited and saved
+    // again while its first copy was still in flight over weak signal was
+    // stamped synced by that first copy's success, and the edit never left
+    // the phone until the note was edited once more.
     async addEntry(entry) {
+      entry.rev = newRev();
       const store = await tx(ENTRIES, "readwrite");
       store.put(entry);
     },
@@ -68,10 +80,13 @@ const IDB = (() => {
       const store = await tx(ENTRIES, "readwrite");
       store.delete(id);
     },
-    async markEntrySynced(id) {
+    // `rev` is the token of the copy that reached the server; a record
+    // saved again since (a different rev) stays unsynced for the next pass.
+    // Left out, the record is marked whatever its rev.
+    async markEntrySynced(id, rev) {
       const store = await tx(ENTRIES, "readwrite");
       const rec = await result(store.get(id));
-      if (rec) { rec.synced = true; store.put(rec); }
+      if (rec && (rev === undefined || rec.rev === rev)) { rec.synced = true; store.put(rec); }
     },
 
     // A photo is deleted here as soon as it is uploaded, so every photo in
