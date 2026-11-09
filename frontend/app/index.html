@@ -80,8 +80,15 @@
       <div class="group">
         <div class="row"><textarea id="entryBody" rows="7" class="textarea" autocapitalize="sentences" placeholder="Speak or type here..."></textarea></div>
       </div>
+      <!-- Afrikaans voice notes: Apple's keyboard dictation has no Afrikaans,
+           so the app records and the server transcribes. Only shown when the
+           server has a speech key. -->
+      <div id="voiceWrap" class="hidden mt-3">
+        <button type="button" id="voiceBtn" class="btn btn-tinted">Record in Afrikaans</button>
+      </div>
+      <p id="voiceHint" class="group-footer hide-empty"></p>
       <div class="group-footer flex items-center justify-between gap-3">
-        <span>Tap the microphone on your keyboard to dictate.</span>
+        <span>For English, tap the microphone on your keyboard.</span>
         <!-- AI tidy-up: only shown when the server has a key, and it only
              ever proposes - nothing changes until Andre taps Use this. -->
         <span id="tidyWrap" class="hidden shrink-0">

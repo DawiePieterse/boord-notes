@@ -126,6 +126,13 @@ It never drops or alters anything, so downgrading is just running the old code. 
 - **Daily limit:** `NB_AI_DAILY_LIMIT`.
 - **Tests:** they use the `fake_claude` fixture and never touch the network. Fake replies must include every field the schema requires.
 
+### Afrikaans voice notes (optional)
+Apple's keyboard dictation has no Afrikaans. The phone records 16 kHz WAV itself (Safari's MediaRecorder gives AAC, which Google's v1 API refuses) and `POST /api/ai/transcribe` passes it to Google in `backend/speech.py`.
+
+- **Key:** `GOOGLE_SPEECH_API_KEY` or `data/google_speech_key.txt`. Without one the button stays hidden.
+- **Daily limit:** `NB_VOICE_DAILY_MINUTES`, counted in seconds of audio.
+- **Offline:** recordings not yet transcribed wait in the entry record's `voice` array, and `syncLoop` turns them into text before it POSTs the note.
+
 ### Frontend constraints
 - **No CDNs.** The phones are on the tailnet only and can't reach the public internet. Everything is served from `frontend/`.
 - **Icons are inline SVG.** The Font Awesome font in `shared/fontawesome/` is a subset with only a few glyphs, now used for weather. A class for a glyph that isn't in the subset renders as a blank box.

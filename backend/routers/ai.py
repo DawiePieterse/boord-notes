@@ -1,9 +1,10 @@
 from typing import List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from sqlmodel import Session, SQLModel, select
 
 import ai
+import speech
 from db import engine
 from models import ActionType, Entry, Tag
 from routers.entries import _entries_out
@@ -101,7 +102,23 @@ def _unavailable(e: ai.AiUnavailable) -> HTTPException:
 @router.get("/status")
 def status():
     """Lets the app show or hide the AI buttons. Cheap: no call to Claude."""
-    return {"enabled": ai.is_configured(), "calls_today": ai.calls_today(), "daily_limit": ai.DAILY_LIMIT}
+    return {"enabled": ai.is_configured(), "calls_today": ai.calls_today(), "daily_limit": ai.DAILY_LIMIT,
+            "voice": speech.is_configured()}
+
+
+@router.post("/transcribe")
+def transcribe(file: UploadFile = File(...)):
+    """A recording in, its Afrikaans text out. Plain def, so the slow call to
+    Google runs on a worker thread and syncs carry on around it."""
+    audio = file.file.read(speech.MAX_BYTES + 1)
+    if len(audio) > speech.MAX_BYTES:
+        raise HTTPException(400, "That recording is too long")
+    try:
+        return {"text": speech.transcribe(audio)}
+    except ValueError:
+        raise HTTPException(400, "That recording could not be read")
+    except ai.AiUnavailable as e:
+        raise _unavailable(e)
 
 
 @router.post("/tidy")

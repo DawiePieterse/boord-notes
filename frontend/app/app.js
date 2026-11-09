@@ -51,6 +51,7 @@ function updateFilterFade() {
 
 function showApp() {
   document.getElementById("appVersion").textContent = `v${NB.VERSION}`;
+  showVoiceButton(rememberedVoiceSetting());
   refreshLists();
   loadAiStatus();
   updateUnsyncedBadge();
@@ -524,6 +525,8 @@ function resetCaptureForm() {
   document.getElementById("actionKindInput").value = "";
   document.getElementById("tagPickWrap").open = false;
   dropPendingPhotos();
+  pendingVoice = [];
+  document.getElementById("voiceHint").textContent = "";
   existingPhotos = [];
   hideTidyResult();
   document.getElementById("tidyHint").textContent = "";
@@ -556,9 +559,13 @@ async function saveEntry() {
 }
 
 async function saveEntryNow() {
-  const title = document.getElementById("entryTitle").value.trim();
+  // Save tapped mid-sentence: what was said so far goes with the note.
+  if (recorder) pendingVoice.push(stopRecording());
+  let title = document.getElementById("entryTitle").value.trim();
   const body = document.getElementById("entryBody").value.trim();
-  if (!title && !body) { NB.toast("Add a title or some notes first"); return; }
+  if (!title && !body && !pendingVoice.length) { NB.toast("Add a title or some notes first"); return; }
+  // Something to show in the list until the words arrive.
+  if (!title && !body) title = "Stemnota";
   addTagFromInput(); // capture anything left un-submitted in the tag input
   addActionFromInput();
 
@@ -577,6 +584,12 @@ async function saveEntryNow() {
     created_at: editingCreatedAt || new Date().toISOString(),
     synced: false,
   };
+
+  // Recordings still waiting for signal travel in the entry record (never a
+  // new store: see DB_VERSION). An edit must carry over the ones already
+  // waiting on this note, or saving the edit would silently lose them.
+  const waitingVoice = [...(((editingEntryId && await IDB.getEntry(id)) || {}).voice || []), ...pendingVoice];
+  if (waitingVoice.length) entry.voice = waitingVoice;
 
   // Stamp where he is and what it's doing, but only on a NEW note - editing
   // one later must not move it to wherever he happens to be sitting. The fix
@@ -666,10 +679,13 @@ async function syncLoop({ manual = false } = {}) {
       localIds.add(entry.id);
       if (entry.synced) { syncedIds.add(entry.id); continue; }
       try {
-        await NB.api("/api/entries", { method: "POST", body: entry });
+        // A note waits on this phone until its recordings are text: the
+        // recording only exists here, so it can't be left behind.
+        const ready = entry.voice ? await transcribeWaitingVoice(entry.id) : entry;
+        await NB.api("/api/entries", { method: "POST", body: ready });
         // Only this copy: a save made while the POST was in flight carries a
         // new rev and must go out on the next pass (see IDB.markEntrySynced).
-        await IDB.markEntrySynced(entry.id, entry.rev);
+        await IDB.markEntrySynced(ready.id, ready.rev);
         syncedIds.add(entry.id);
         pushedSomething = true;
       } catch (e) {
@@ -1470,13 +1486,16 @@ async function restoreEntry(id) {
 let tidySuggestion = null;   // {title, body, suggested_tags, suggested_actions} awaiting Use this / Keep mine
 
 async function loadAiStatus() {
-  let enabled;
+  let enabled, voiceOn;
   try {
     const status = await NB.api("/api/ai/status");
     enabled = !!(status && status.enabled);
+    voiceOn = !!(status && status.voice);
   } catch (e) { return; }  // offline - leave the buttons as they were
   document.getElementById("tidyWrap").classList.toggle("hidden", !enabled);
   document.getElementById("tabAsk").classList.toggle("hidden", !enabled);
+  try { localStorage.setItem("nb_voice_on", voiceOn ? "1" : "0"); } catch (_) { /* storage blocked */ }
+  showVoiceButton(voiceOn);
 }
 
 // A 503 from /api/ai/* carries a sentence written for Andre; anything else is
@@ -1543,6 +1562,170 @@ function acceptTidy() {
   document.getElementById("entryTitle").value = tidySuggestion.title;
   document.getElementById("entryBody").value = tidySuggestion.body;
   hideTidyResult();
+}
+
+// ---------------------------------------------------------------------
+// Afrikaans voice notes. Apple's keyboard dictation has no Afrikaans, so the
+// app records and the server asks Google. Recording works with no signal:
+// what can't be sent now waits inside the note and becomes text in syncLoop.
+// ---------------------------------------------------------------------
+const VOICE_RATE = 16000;
+const VOICE_MAX_SECONDS = 300;
+let recorder = null;       // {ctx, stream, chunks, timer} while recording
+let pendingVoice = [];     // WAV blobs for the form, not yet turned into text
+
+// Remembered because the record button matters most with no signal, exactly
+// when the server can't be asked whether voice notes are set up.
+function rememberedVoiceSetting() {
+  try { return localStorage.getItem("nb_voice_on") === "1"; } catch (_) { return false; }
+}
+
+function showVoiceButton(on) {
+  const can = on && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  document.getElementById("voiceWrap").classList.toggle("hidden", !can);
+}
+
+// 16 kHz mono 16-bit WAV. iPhones can only compress to AAC with MediaRecorder,
+// which Google's speech API doesn't take, so the raw samples are captured and
+// packed here instead: about 2 MB a minute.
+function encodeVoiceWav(chunks, fromRate) {
+  const samples = new Float32Array(chunks.reduce((n, c) => n + c.length, 0));
+  let at = 0;
+  for (const c of chunks) { samples.set(c, at); at += c.length; }
+  const step = fromRate / VOICE_RATE;
+  const count = Math.floor(samples.length / step);
+  const view = new DataView(new ArrayBuffer(44 + count * 2));
+  const text = (pos, s) => [...s].forEach((ch, i) => view.setUint8(pos + i, ch.charCodeAt(0)));
+  text(0, "RIFF"); view.setUint32(4, 36 + count * 2, true); text(8, "WAVEfmt ");
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, VOICE_RATE, true); view.setUint32(28, VOICE_RATE * 2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  text(36, "data"); view.setUint32(40, count * 2, true);
+  for (let i = 0; i < count; i++) {
+    // Averaging each stretch, rather than taking every third sample, keeps
+    // high-pitched noise from folding down into the speech.
+    const from = Math.floor(i * step);
+    const to = Math.max(from + 1, Math.floor((i + 1) * step));
+    let sum = 0;
+    for (let j = from; j < to; j++) sum += samples[j];
+    const v = Math.max(-1, Math.min(1, sum / (to - from)));
+    view.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+  }
+  return new Blob([view], { type: "audio/wav" });
+}
+
+async function startRecording() {
+  const btn = document.getElementById("voiceBtn");
+  const hint = document.getElementById("voiceHint");
+  btn.disabled = true;
+  // The microphone can take a moment to open, and words said before it has
+  // would be lost, so the button doesn't claim to be listening until it is.
+  btn.textContent = "Starting...";
+  hint.textContent = "";
+  // Made before the first await: iOS only lets audio start inside the tap.
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    await ctx.resume();
+  } catch (e) {
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    ctx.close();
+    hint.textContent = "The app isn't allowed to use the microphone. Allow it in the iPhone's Settings.";
+    btn.textContent = "Record in Afrikaans";
+    btn.disabled = false;
+    return;
+  }
+  const chunks = [];
+  // ScriptProcessor is old but needs no extra file for the offline cache, and
+  // every iPhone that runs this app has it.
+  const processor = ctx.createScriptProcessor(4096, 1, 1);
+  processor.onaudioprocess = (e) => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  ctx.createMediaStreamSource(stream).connect(processor);
+  processor.connect(ctx.destination);   // Safari only runs a node that is connected
+  const started = Date.now();
+  const tick = () => {
+    const s = Math.floor((Date.now() - started) / 1000);
+    btn.textContent = `Stop recording (${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")})`;
+    if (s >= VOICE_MAX_SECONDS) finishRecording();
+  };
+  tick();
+  recorder = { ctx, stream, chunks, timer: setInterval(tick, 1000) };
+  btn.disabled = false;
+}
+
+function stopRecording() {
+  const { ctx, stream, chunks, timer } = recorder;
+  recorder = null;
+  clearInterval(timer);
+  stream.getTracks().forEach((t) => t.stop());
+  const blob = encodeVoiceWav(chunks, ctx.sampleRate);
+  ctx.close();
+  document.getElementById("voiceBtn").textContent = "Record in Afrikaans";
+  return blob;
+}
+
+const addTranscript = (body, text) => [body, text].filter(Boolean).join(body.endsWith("\n") ? "" : "\n");
+
+const sendVoice = async (blob) => {
+  const form = new FormData();
+  form.append("file", blob, "note.wav");
+  return (await NB.api("/api/ai/transcribe", { method: "POST", body: form, isForm: true, timeoutMs: AI_TIMEOUT_MS })).text;
+};
+
+// The recording joins the note's waiting list first, so if anything below
+// fails, or Save is tapped meanwhile, it still goes with the note.
+async function finishRecording() {
+  if (!recorder) return;
+  const blob = stopRecording();
+  pendingVoice.push(blob);
+  const hint = document.getElementById("voiceHint");
+  const kept = "Recording kept. It will turn into text once there's signal - you can save the note now.";
+  if (!NB.serverLikelyReachable()) { hint.textContent = kept; return; }
+  hint.textContent = "Turning it into text...";
+  let text;
+  try {
+    text = await sendVoice(blob);
+  } catch (e) {
+    if (pendingVoice.includes(blob)) hint.textContent = NB.isNetworkError(e) ? kept : `${NB.errorMessage(e, "That didn't work.")} The recording is kept with this note.`;
+    return;
+  }
+  if (!pendingVoice.includes(blob)) return;   // saved meanwhile: syncLoop has it now
+  pendingVoice = pendingVoice.filter((b) => b !== blob);
+  const box = document.getElementById("entryBody");
+  box.value = addTranscript(box.value, text);
+  hint.textContent = text ? "" : "No words were heard in that recording.";
+}
+
+// Should a recording that failed to transcribe stay on the phone and be
+// tried again on the next sync pass?
+// Only a 400 gives up: the server has read the audio and refused it, and no
+// amount of retrying changes that. Everything else (no signal, no key yet, the
+// daily limit, Google down, even a server bug a later release can fix) keeps
+// it, because a stuck note is safe and a dropped recording is gone for good.
+function keepRecordingForRetry(err) {
+  return err.status !== 400;
+}
+
+// One recording at a time, each re-reading the record: a save can land while
+// Google is answering, and writing back the older copy would undo that edit.
+async function transcribeWaitingVoice(id) {
+  for (;;) {
+    const waiting = await IDB.getEntry(id);
+    if (!waiting.voice || !waiting.voice.length) return waiting;
+    let text;
+    try {
+      text = await sendVoice(waiting.voice[0]);
+    } catch (e) {
+      if (keepRecordingForRetry(e)) throw e;
+      text = "[A voice recording on this note could not be turned into text.]";
+    }
+    const current = await IDB.getEntry(id);
+    current.body = addTranscript(current.body, text);
+    current.voice = current.voice.slice(1);
+    if (!current.voice.length) delete current.voice;
+    await IDB.addEntry(current);
+  }
 }
 
 async function runAsk() {
@@ -1660,6 +1843,7 @@ async function triggerBackup() {
 // ---------------------------------------------------------------------
 function init() {
   NB.clearLegacyAuthStorage();
+  document.getElementById("voiceBtn").addEventListener("click", () => (recorder ? finishRecording() : startRecording()));
   document.querySelectorAll(".tab-btn").forEach((btn) => btn.addEventListener("click", () => showPage(btn.dataset.tab)));
 
   // Enter in a one-line box does what its Add button does.
