@@ -4,7 +4,7 @@
 // installable/offline. See idb.js/app.js for the actual offline-capture and
 // sync logic.
 const CACHE_PREFIX = "nb-app-";
-const CACHE = "nb-app-v27";
+const CACHE = "nb-app-v28";
 const REVALIDATE_TIMEOUT_MS = 10000;
 const SHELL = [
   "./",
