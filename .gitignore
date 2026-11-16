@@ -26,3 +26,4 @@ data/installed_version.txt
 
 # The Claude API key for the AI buttons (or set ANTHROPIC_API_KEY instead).
 data/anthropic_key.txt
+data/google_speech_key.txt

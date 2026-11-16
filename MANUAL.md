@@ -63,9 +63,13 @@ Notes captured since show no author, because nothing knows who is typing.
 Andre doesn't record voice notes in the sense of an audio file. He taps the
 **microphone key on his iPhone's own keyboard** and dictates straight into
 the Notes field, using Apple's built-in dictation (which handles both
-Afrikaans and South African English). The app only ever sees and stores the
-resulting **text** - there is no audio file anywhere, no transcription
-service, and no recording of any kind.
+South African English, but not Afrikaans). English notes work that way, and
+the app only ever sees the resulting **text**.
+
+Afrikaans needs the **Record in Afrikaans** button, because Apple has no
+Afrikaans dictation. That recording is sent through the farm server to Google
+Speech-to-Text, and once it is text the recording is deleted. With no signal
+it waits on the phone, inside the note. The server never saves audio.
 
 ### What a note is
 
@@ -390,11 +394,25 @@ it on the server with `tailscale serve status` - the line proxying to
 
 ### Dictation
 
-Tap the Notes field, then tap the **microphone icon** on the iOS keyboard
-(next to the space bar) to dictate in Afrikaans or English - iOS auto-
-detects or can be set per-keyboard under Settings → General → Keyboard →
-Keyboards, if it's not picking up the right language. Tap the keyboard icon
-again (or tap "Done") to stop dictating and review/edit the text normally.
+**In Afrikaans:** tap **Record in Afrikaans** under the Notes field, say the
+note, and tap **Stop recording**. The words appear in the Notes field a few
+seconds later (up to five minutes per recording). The first time, the iPhone
+asks to use the microphone: allow it. With no signal, the recording stays with
+the note; save it as usual, and the words are added when the phone next
+reaches the server. Such a note counts as "not yet synced" until then, and is
+titled "Stemnota" if you gave it neither a title nor text.
+
+The button only shows once the server has a speech key (see **Setting up
+Afrikaans voice notes**).
+
+**In English:** tap the Notes field, then the **microphone icon** on the iOS
+keyboard. Tap it again (or tap "Done") to stop and edit the text normally.
+
+**Setting up Afrikaans voice notes.** In a Google Cloud project with billing
+on, enable the Cloud Speech-to-Text API and create an API key restricted to
+it. Save the key as `data\google_speech_key.txt` on the farm PC, or set
+`GOOGLE_SPEECH_API_KEY`. Google bills per minute of audio; the server stops at
+60 minutes a day, which `NB_VOICE_DAILY_MINUTES` changes.
 
 ### Photos
 
@@ -741,11 +759,8 @@ out of signal. The weather is read at the moment of capture and deliberately
 not backfilled later, because that would record conditions hours after the
 fact. Blank means "not known".
 
-**Dictation isn't picking up Afrikaans / keeps typing in the wrong
-language.** On the iPhone: Settings → General → Keyboard → Keyboards →
-confirm both the desired language keyboards are added; iOS dictation
-follows whichever keyboard is currently active, switchable with the globe
-key while typing.
+**Afrikaans comes out as garbled English.** That is the keyboard's microphone,
+which has no Afrikaans. Use **Record in Afrikaans** instead.
 
 **The app opens but everything fails, on the old `:8443` address.** This is
 the one migration trap in the move to `:9443`. Until this release the manual
