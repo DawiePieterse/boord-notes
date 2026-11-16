@@ -5,11 +5,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+import tunnel_gate
 from backup import start_backup_scheduler
 from db import PHOTOS_DIR, create_db_and_tables, seed_defaults
 from routers import actions, ai as ai_router, backups, blocks, entries, tags, version, weather
 
 app = FastAPI(title="Boord Notes")
+
+# Who may reach this app through the Cloudflare Tunnel (tunnel_gate.py): the
+# paired-device roles it admits there. Tailscale is not asked anything.
+# The owner only. This is a private notebook for two people, and a device
+# that signed in with the office's admin PIN is not thereby one of them. An
+# owner's pairing is made in Boord by another owner, or from a device on
+# Tailscale.
+TUNNEL_ROLES = ("owner",)
+tunnel_gate.install(app, TUNNEL_ROLES)
 
 app.add_middleware(
     CORSMiddleware,
